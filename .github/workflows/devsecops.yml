@@ -8,7 +8,7 @@
 # - Dynamic Application Security Testing (DAST): OWASP ZAP baseline scan
 # 
 # All security reports are uploaded as artifacts for review.
-# ================================================================================
+# ================================================================================a
 
 name: DevSecOps Pipeline
 
@@ -108,144 +108,121 @@ jobs:
           path: app/ci-report.txt
           retention-days: 30
 
+    # ================================================================================
+  # JOB 2: Static Application Security Testing (SAST) - CodeQL + HTML Report
   # ================================================================================
-  # JOB 2: Static Application Security Testing (SAST)
-  # ================================================================================
-   # ================================================================================
-  # JOB 2: Static Application Security Testing (SAST)
-  # ================================================================================
+  sast-codeql:
+    name: 🔍 SAST - CodeQL Analysis
+    runs-on: ubuntu-latest
 
- sast-codeql:
-  name: 🔍 SAST - CodeQL Analysis
-  runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
 
-  permissions:
-    security-events: write
-    actions: read
-    contents: read
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
 
-  steps:
-    - name: 📥 Checkout repository
-      uses: actions/checkout@v4
+      - name: 🔧 Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+          queries: security-extended,security-and-quality
 
-    - name: 🔧 Initialize CodeQL
-      uses: github/codeql-action/init@v3
-      with:
-        languages: javascript
-        queries: security-extended,security-and-quality
+      - name: 🔬 Perform CodeQL Analysis
+        id: analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript"
+          output: codeql-results
+          upload: false
+        continue-on-error: true
 
-    - name: 🔬 Perform CodeQL Analysis
-      id: analyze
-      uses: github/codeql-action/analyze@v3
-      with:
-        category: "/language:javascript"
-        output: codeql-results
-        upload: false
-      continue-on-error: true
+      # --------------------------------------------------------------------------
+      # Convert SARIF → HTML avec sarif-tools (rapport visuel)
+      # --------------------------------------------------------------------------
+      - name: 📄 Convert SARIF to HTML Report
+        if: always()
+        run: |
+          echo "🔧 Installing Python and sarif-tools..."
+          sudo apt-get update -y
+          sudo apt-get install -y python3-pip jq
+          pip install sarif-tools
 
-    - name: 📄 Convert SARIF to HTML Report
-      if: always()
-      run: |
-        echo "🔧 Installing sarif-tools for HTML conversion..."
-        pip install sarif-tools
-        
-        echo "📊 Generating HTML report from SARIF..."
-        mkdir -p sast-html
-        
-        SARIF_FILE=$(find codeql-results -name "*.sarif" | head -n 1)
-        
-        if [ -f "$SARIF_FILE" ]; then
-          echo "✅ SARIF file found: $SARIF_FILE"
-          
-          # Générer le rapport HTML avec sarif-tools
-          sarif html "$SARIF_FILE" --output sast-html/codeql-report.html
-          
-          # Générer aussi un résumé textuel avec statistiques
-          sarif summary "$SARIF_FILE" > sast-html/summary.txt
-          
-          echo "✅ HTML report generated successfully."
-        else
-          echo "❌ No SARIF file found. Creating empty report."
-          echo "<html><body><h1>No vulnerabilities detected or analysis failed</h1></body></html>" > sast-html/codeql-report.html
-        fi
-      continue-on-error: true
+          echo "📊 Generating HTML report from SARIF..."
+          mkdir -p sast-html
 
-    - name: 📊 Generate SAST Summary with Statistics
-      if: always()
-      run: |
-        mkdir -p sast-reports
-        
-        SARIF_FILE=$(find codeql-results -name "*.sarif" | head -n 1)
-        
-        cat > sast-reports/codeql-summary.txt << 'EOF'
-        =====================================
-        CodeQL SAST Analysis Report
-        =====================================
-        
-        Timestamp: $(date)
-        Language: JavaScript/TypeScript
-        Queries: security-extended, security-and-quality
-        
-        EOF
-        
-        if [ -f "$SARIF_FILE" ]; then
-          echo "📊 Extracting vulnerability statistics..."
-          
-          # Compter les vulnérabilités par sévérité
-          ERROR_COUNT=$(jq '[.runs[].results[] | select(.level=="error")] | length' "$SARIF_FILE")
-          WARNING_COUNT=$(jq '[.runs[].results[] | select(.level=="warning")] | length' "$SARIF_FILE")
-          NOTE_COUNT=$(jq '[.runs[].results[] | select(.level=="note")] | length' "$SARIF_FILE")
-          TOTAL_COUNT=$(jq '[.runs[].results[]] | length' "$SARIF_FILE")
-          
-          cat >> sast-reports/codeql-summary.txt << EOF
-        📊 Vulnerability Summary:
-        ├── 🔴 Critical/Error: $ERROR_COUNT
-        ├── 🟡 Warning: $WARNING_COUNT
-        ├── 🔵 Note/Info: $NOTE_COUNT
-        └── 📋 Total Issues: $TOTAL_COUNT
-        
-        EOF
-          
-          # Calculer les pourcentages
-          if [ "$TOTAL_COUNT" -gt 0 ]; then
-            ERROR_PCT=$(awk "BEGIN {printf \"%.1f\", ($ERROR_COUNT/$TOTAL_COUNT)*100}")
-            WARNING_PCT=$(awk "BEGIN {printf \"%.1f\", ($WARNING_COUNT/$TOTAL_COUNT)*100}")
-            NOTE_PCT=$(awk "BEGIN {printf \"%.1f\", ($NOTE_COUNT/$TOTAL_COUNT)*100}")
-            
-            cat >> sast-reports/codeql-summary.txt << EOF
-        📈 Severity Distribution:
-        ├── Critical/Error: $ERROR_PCT%
-        ├── Warning: $WARNING_PCT%
-        └── Note/Info: $NOTE_PCT%
-        
-        EOF
+          SARIF_FILE=$(find codeql-results -name "*.sarif" | head -n 1)
+
+          if [ -f "$SARIF_FILE" ]; then
+            echo "✅ SARIF file found: $SARIF_FILE"
+            sarif html "$SARIF_FILE" -o sast-html/codeql-report.html
+            sarif summary "$SARIF_FILE" > sast-html/codeql-summary.txt
+          else
+            echo "❌ No SARIF file found. Creating placeholder report."
+            echo "<html><body><h2>No vulnerabilities detected or analysis failed</h2></body></html>" > sast-html/codeql-report.html
           fi
-          
-          # Lister les 10 principales vulnérabilités
-          echo "🔝 Top Vulnerabilities:" >> sast-reports/codeql-summary.txt
-          jq -r '.runs[].results[] | "  • [\(.level | ascii_upcase)] \(.ruleId): \(.message.text)"' "$SARIF_FILE" | head -n 10 >> sast-reports/codeql-summary.txt
-          
-        else
-          echo "✅ No vulnerabilities detected or analysis incomplete." >> sast-reports/codeql-summary.txt
-        fi
-        
-        echo "" >> sast-reports/codeql-summary.txt
-        echo "📄 Full report available in: sast-html/codeql-report.html" >> sast-reports/codeql-summary.txt
-        echo "=====================================" >> sast-reports/codeql-summary.txt
-        
-        # Afficher le résumé dans les logs
-        cat sast-reports/codeql-summary.txt
+        continue-on-error: true
 
-    - name: 📤 Upload SAST Reports
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: sast-codeql-report
-        path: |
-          sast-reports/
-          sast-html/
-          codeql-results/*.sarif
-        retention-days: 30
+      # --------------------------------------------------------------------------
+      # Générer un résumé textuel avec statistiques
+      # --------------------------------------------------------------------------
+      - name: 📊 Generate SAST Summary with Statistics
+        if: always()
+        run: |
+          mkdir -p sast-reports
+          SARIF_FILE=$(find codeql-results -name "*.sarif" | head -n 1)
+
+          echo "=====================================" > sast-reports/codeql-summary.txt
+          echo "CodeQL SAST Analysis Report" >> sast-reports/codeql-summary.txt
+          echo "=====================================" >> sast-reports/codeql-summary.txt
+          echo "" >> sast-reports/codeql-summary.txt
+          echo "Timestamp: $(date)" >> sast-reports/codeql-summary.txt
+          echo "Language: JavaScript" >> sast-reports/codeql-summary.txt
+          echo "Queries: security-extended, security-and-quality" >> sast-reports/codeql-summary.txt
+          echo "" >> sast-reports/codeql-summary.txt
+
+          if [ -f "$SARIF_FILE" ]; then
+            echo "📊 Extracting vulnerability statistics..."
+            ERROR_COUNT=$(jq '[.runs[].results[] | select(.level=="error")] | length' "$SARIF_FILE")
+            WARNING_COUNT=$(jq '[.runs[].results[] | select(.level=="warning")] | length' "$SARIF_FILE")
+            NOTE_COUNT=$(jq '[.runs[].results[] | select(.level=="note")] | length' "$SARIF_FILE")
+            TOTAL_COUNT=$(jq '[.runs[].results[]] | length' "$SARIF_FILE")
+
+            echo "🔴 Critical/Error: $ERROR_COUNT" >> sast-reports/codeql-summary.txt
+            echo "🟡 Warning: $WARNING_COUNT" >> sast-reports/codeql-summary.txt
+            echo "🔵 Note/Info: $NOTE_COUNT" >> sast-reports/codeql-summary.txt
+            echo "📋 Total Issues: $TOTAL_COUNT" >> sast-reports/codeql-summary.txt
+            echo "" >> sast-reports/codeql-summary.txt
+
+            echo "Top 10 vulnerabilities:" >> sast-reports/codeql-summary.txt
+            jq -r '.runs[].results[] | "• [\(.level)] \(.ruleId): \(.message.text)"' "$SARIF_FILE" | head -n 10 >> sast-reports/codeql-summary.txt
+          else
+            echo "✅ No vulnerabilities detected." >> sast-reports/codeql-summary.txt
+          fi
+
+          echo "" >> sast-reports/codeql-summary.txt
+          echo "Full HTML report available in: sast-html/codeql-report.html" >> sast-reports/codeql-summary.txt
+          echo "=====================================" >> sast-reports/codeql-summary.txt
+
+          cat sast-reports/codeql-summary.txt
+
+      # --------------------------------------------------------------------------
+      # Upload des rapports (SARIF + HTML + résumé)
+      # --------------------------------------------------------------------------
+      - name: 📤 Upload SAST Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-codeql-report
+          path: |
+            sast-html/
+            sast-reports/
+            codeql-results/*.sarif
+          retention-days: 30
+
+ 
 
 
   # ================================================================================
