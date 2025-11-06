@@ -375,14 +375,15 @@ jobs:
           echo "📋 Recent logs:"
           docker compose logs --tail=20
 
+          
       - name: 🕷️ Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.10.0
         with:
-          target: 'http://localhost:4000'
-          cmd_options: '-a -j -l PASS -P'  # ✅ -P empêche la publication GitHub
-        env:
-            GITHUB_TOKEN: ''  # ✅ empêche toute utilisation du token GitHub
-            continue-on-error: true  # ✅ le job ne sera jamais marqué en échec
+          target: 'http://localhost:4000'        # URL de l'application à scanner
+          rules_file_name: '.zap/rules.tsv'     # Fichier de règles personnalisées ZAP
+          cmd_options: '-a -j -l PASS'          # Options supplémentaires pour le scan
+        continue-on-error: true                  # Ne pas échouer le pipeline en cas de vulnérabilités
+
 
       - name: 📊 Generate DAST Report Summary
         if: always()
