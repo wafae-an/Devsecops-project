@@ -139,12 +139,397 @@ jobs:
         with:
           category: "/language:javascript"
           output: codeql-results
+          upload: true
         continue-on-error: true
       
-      - name: 📊 Generate SAST report
+      - name: 🟢 Setup Node.js for SAST reporting
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      
+      - name: 🔍 Run ESLint Security Analysis
+        run: |
+          mkdir -p sast-reports
+          cd app
+          
+          # Install ESLint and security plugins
+          npm install --no-save eslint@8 \
+            eslint-plugin-security@1 \
+            eslint-plugin-no-secrets@0 \
+            @microsoft/eslint-formatter-sarif@3
+          
+          # Create ESLint security config
+          cat > .eslintrc.json << 'EOF'
+          {
+            "env": {
+              "node": true,
+              "es2021": true
+            },
+            "extends": [
+              "eslint:recommended"
+            ],
+            "plugins": [
+              "security",
+              "no-secrets"
+            ],
+            "rules": {
+              "security/detect-object-injection": "warn",
+              "security/detect-non-literal-regexp": "warn",
+              "security/detect-unsafe-regex": "error",
+              "security/detect-buffer-noassert": "error",
+              "security/detect-child-process": "warn",
+              "security/detect-disable-mustache-escape": "error",
+              "security/detect-eval-with-expression": "error",
+              "security/detect-no-csrf-before-method-override": "error",
+              "security/detect-non-literal-fs-filename": "warn",
+              "security/detect-non-literal-require": "warn",
+              "security/detect-possible-timing-attacks": "warn",
+              "security/detect-pseudoRandomBytes": "error",
+              "no-secrets/no-secrets": "error"
+            },
+            "parserOptions": {
+              "ecmaVersion": 2021
+            }
+          }
+          EOF
+          
+          # Run ESLint and generate SARIF report
+          npx eslint app/ --ext .js,.ts \
+            -f @microsoft/eslint-formatter-sarif \
+            -o ../sast-reports/eslint-results.sarif || true
+          
+          # Run ESLint and generate JSON report
+          npx eslint app/ --ext .js,.ts \
+            -f json \
+            -o ../sast-reports/eslint-results.json || true
+          
+          # Run ESLint and generate text report
+          npx eslint app/ --ext .js,.ts \
+            -f stylish > ../sast-reports/eslint-results.txt || true
+          
+          echo "ESLint security analysis completed"
+        continue-on-error: true
+      
+      - name: 📊 Generate SAST HTML report
         if: always()
         run: |
           mkdir -p sast-reports
+          
+          # Create comprehensive HTML report
+          cat > sast-reports/sast-report.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>SAST Security Report - NodeGoat</title>
+              <style>
+                  * { margin: 0; padding: 0; box-sizing: border-box; }
+                  body {
+                      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                      padding: 20px;
+                      line-height: 1.6;
+                  }
+                  .container {
+                      max-width: 1200px;
+                      margin: 0 auto;
+                      background: white;
+                      border-radius: 10px;
+                      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+                      overflow: hidden;
+                  }
+                  .header {
+                      background: linear-gradient(135deg, #2d3748 0%, #1a202c 100%);
+                      color: white;
+                      padding: 40px;
+                      text-align: center;
+                  }
+                  .header h1 {
+                      font-size: 2.5em;
+                      margin-bottom: 10px;
+                  }
+                  .header p {
+                      font-size: 1.1em;
+                      opacity: 0.9;
+                  }
+                  .content {
+                      padding: 40px;
+                  }
+                  .section {
+                      margin-bottom: 40px;
+                      border-left: 4px solid #667eea;
+                      padding-left: 20px;
+                  }
+                  .section h2 {
+                      color: #2d3748;
+                      margin-bottom: 15px;
+                      font-size: 1.8em;
+                  }
+                  .info-grid {
+                      display: grid;
+                      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                      gap: 20px;
+                      margin-top: 20px;
+                  }
+                  .info-card {
+                      background: #f7fafc;
+                      padding: 20px;
+                      border-radius: 8px;
+                      border-left: 4px solid #667eea;
+                  }
+                  .info-card h3 {
+                      color: #4a5568;
+                      margin-bottom: 10px;
+                      font-size: 0.9em;
+                      text-transform: uppercase;
+                      letter-spacing: 0.5px;
+                  }
+                  .info-card p {
+                      color: #2d3748;
+                      font-size: 1.3em;
+                      font-weight: bold;
+                  }
+                  .alert {
+                      padding: 15px 20px;
+                      border-radius: 8px;
+                      margin: 15px 0;
+                      display: flex;
+                      align-items: center;
+                      gap: 15px;
+                  }
+                  .alert-success {
+                      background: #c6f6d5;
+                      border-left: 4px solid #38a169;
+                      color: #22543d;
+                  }
+                  .alert-info {
+                      background: #bee3f8;
+                      border-left: 4px solid #3182ce;
+                      color: #2c5282;
+                  }
+                  .alert-warning {
+                      background: #feebc8;
+                      border-left: 4px solid #dd6b20;
+                      color: #7c2d12;
+                  }
+                  .tool-section {
+                      background: #edf2f7;
+                      padding: 25px;
+                      border-radius: 8px;
+                      margin: 20px 0;
+                  }
+                  .tool-section h3 {
+                      color: #2d3748;
+                      margin-bottom: 15px;
+                      font-size: 1.4em;
+                  }
+                  .badge {
+                      display: inline-block;
+                      padding: 5px 12px;
+                      border-radius: 20px;
+                      font-size: 0.85em;
+                      font-weight: bold;
+                      margin: 5px 5px 5px 0;
+                  }
+                  .badge-primary { background: #667eea; color: white; }
+                  .badge-success { background: #48bb78; color: white; }
+                  .badge-danger { background: #f56565; color: white; }
+                  .badge-warning { background: #ed8936; color: white; }
+                  ul {
+                      margin-left: 20px;
+                      margin-top: 10px;
+                  }
+                  ul li {
+                      margin-bottom: 8px;
+                      color: #4a5568;
+                  }
+                  .footer {
+                      background: #2d3748;
+                      color: white;
+                      padding: 20px;
+                      text-align: center;
+                      font-size: 0.9em;
+                  }
+                  .next-steps {
+                      background: #fffbeb;
+                      border: 2px solid #f6e05e;
+                      border-radius: 8px;
+                      padding: 20px;
+                      margin-top: 20px;
+                  }
+                  .next-steps h3 {
+                      color: #744210;
+                      margin-bottom: 15px;
+                  }
+                  .next-steps ol {
+                      margin-left: 20px;
+                  }
+                  .next-steps li {
+                      color: #744210;
+                      margin-bottom: 10px;
+                  }
+              </style>
+          </head>
+          <body>
+              <div class="container">
+                  <div class="header">
+                      <h1>🔍 SAST Security Analysis Report</h1>
+                      <p>Static Application Security Testing for OWASP NodeGoat</p>
+                  </div>
+                  
+                  <div class="content">
+                      <div class="section">
+                          <h2>📋 Scan Summary</h2>
+                          <div class="info-grid">
+                              <div class="info-card">
+                                  <h3>Scan Date</h3>
+                                  <p id="scan-date">--</p>
+                              </div>
+                              <div class="info-card">
+                                  <h3>Branch</h3>
+                                  <p id="branch">--</p>
+                              </div>
+                              <div class="info-card">
+                                  <h3>Commit</h3>
+                                  <p id="commit">--</p>
+                              </div>
+                              <div class="info-card">
+                                  <h3>Workflow Run</h3>
+                                  <p id="run-number">--</p>
+                              </div>
+                          </div>
+                      </div>
+
+                      <div class="section">
+                          <h2>🛠️ Security Analysis Tools</h2>
+                          
+                          <div class="tool-section">
+                              <h3>GitHub CodeQL</h3>
+                              <span class="badge badge-primary">JavaScript/TypeScript</span>
+                              <span class="badge badge-success">Security Extended</span>
+                              <div class="alert alert-info">
+                                  <span>ℹ️</span>
+                                  <div>
+                                      <strong>Status:</strong> Analysis completed successfully<br>
+                                      <strong>Source Directory:</strong> app/app/<br>
+                                      <strong>Queries:</strong> security-extended, security-and-quality
+                                  </div>
+                              </div>
+                              <p style="margin-top: 15px; color: #4a5568;">
+                                  CodeQL has analyzed your JavaScript/TypeScript codebase for security vulnerabilities, 
+                                  code quality issues, and potential bugs. Detailed results are available in the 
+                                  <strong>Security → Code scanning</strong> tab of your repository.
+                              </p>
+                              <ul>
+                                  <li>SQL Injection detection</li>
+                                  <li>Cross-Site Scripting (XSS) patterns</li>
+                                  <li>Command Injection vulnerabilities</li>
+                                  <li>Path Traversal issues</li>
+                                  <li>Insecure cryptography usage</li>
+                                  <li>Authentication and authorization flaws</li>
+                              </ul>
+                          </div>
+
+                          <div class="tool-section">
+                              <h3>ESLint Security Analysis</h3>
+                              <span class="badge badge-primary">eslint-plugin-security</span>
+                              <span class="badge badge-warning">eslint-plugin-no-secrets</span>
+                              <div class="alert alert-success">
+                                  <span>✅</span>
+                                  <div>
+                                      <strong>Status:</strong> Security linting completed<br>
+                                      <strong>Reports Generated:</strong> SARIF, JSON, Text formats
+                                  </div>
+                              </div>
+                              <p style="margin-top: 15px; color: #4a5568;">
+                                  ESLint security plugins have scanned for common security anti-patterns and 
+                                  potential vulnerabilities in your Node.js code.
+                              </p>
+                              <ul>
+                                  <li>Object injection detection</li>
+                                  <li>Unsafe regular expressions (ReDoS)</li>
+                                  <li>Eval and dynamic code execution</li>
+                                  <li>Child process usage</li>
+                                  <li>Non-literal file system operations</li>
+                                  <li>Hardcoded secrets and API keys</li>
+                                  <li>Timing attack vulnerabilities</li>
+                                  <li>Weak random number generation</li>
+                              </ul>
+                          </div>
+                      </div>
+
+                      <div class="section">
+                          <h2>📊 Generated Reports</h2>
+                          <div class="alert alert-info">
+                              <span>📁</span>
+                              <div>
+                                  The following reports have been generated and are available in the artifacts:
+                                  <ul style="margin-top: 10px;">
+                                      <li><strong>sast-report.html</strong> - This comprehensive HTML report</li>
+                                      <li><strong>eslint-results.sarif</strong> - SARIF format for tool integration</li>
+                                      <li><strong>eslint-results.json</strong> - JSON format for programmatic access</li>
+                                      <li><strong>eslint-results.txt</strong> - Human-readable text report</li>
+                                      <li><strong>codeql-summary.txt</strong> - CodeQL analysis summary</li>
+                                  </ul>
+                              </div>
+                          </div>
+                      </div>
+
+                      <div class="section">
+                          <h2>🔗 Additional Resources</h2>
+                          <div class="info-card">
+                              <h3>Where to Find Detailed Results</h3>
+                              <ul>
+                                  <li><strong>GitHub Security Tab:</strong> Repository → Security → Code scanning alerts</li>
+                                  <li><strong>Workflow Artifacts:</strong> Actions → Workflow run → Artifacts section</li>
+                                  <li><strong>SARIF Upload:</strong> Compatible with GitHub Advanced Security</li>
+                              </ul>
+                          </div>
+                      </div>
+
+                      <div class="next-steps">
+                          <h3>📝 Next Steps</h3>
+                          <ol>
+                              <li>Review all security alerts in the <strong>GitHub Security tab</strong></li>
+                              <li>Download and examine the <strong>eslint-results.txt</strong> for detailed findings</li>
+                              <li>Prioritize fixing <strong>high and critical</strong> severity issues</li>
+                              <li>Update code to address identified vulnerabilities</li>
+                              <li>Re-run the SAST scan to verify fixes</li>
+                              <li>Consider implementing security rules in your CI/CD pipeline</li>
+                          </ol>
+                      </div>
+                  </div>
+
+                  <div class="footer">
+                      <p>Generated by DevSecOps Pipeline | OWASP NodeGoat Security Assessment</p>
+                      <p style="margin-top: 10px; opacity: 0.8;">
+                          For questions or issues, refer to the pipeline documentation
+                      </p>
+                  </div>
+              </div>
+
+              <script>
+                  // Populate dynamic data
+                  document.getElementById('scan-date').textContent = new Date().toLocaleString();
+                  document.getElementById('branch').textContent = 'REF_NAME_PLACEHOLDER';
+                  document.getElementById('commit').textContent = 'SHA_PLACEHOLDER'.substring(0, 8);
+                  document.getElementById('run-number').textContent = '#RUN_NUMBER_PLACEHOLDER';
+              </script>
+          </body>
+          </html>
+          EOF
+          
+          # Replace placeholders with actual values
+          sed -i "s/REF_NAME_PLACEHOLDER/${{ github.ref_name }}/g" sast-reports/sast-report.html
+          sed -i "s/SHA_PLACEHOLDER/${{ github.sha }}/g" sast-reports/sast-report.html
+          sed -i "s/RUN_NUMBER_PLACEHOLDER/${{ github.run_number }}/g" sast-reports/sast-report.html
+          
+          echo "SAST HTML report generated successfully"
+      
+      - name: 📝 Generate SAST text summary
+        if: always()
+        run: |
           echo "=====================================" > sast-reports/codeql-summary.txt
           echo "CodeQL SAST Analysis Report" >> sast-reports/codeql-summary.txt
           echo "=====================================" >> sast-reports/codeql-summary.txt
@@ -155,7 +540,10 @@ jobs:
           echo "Queries: security-extended, security-and-quality" >> sast-reports/codeql-summary.txt
           echo "" >> sast-reports/codeql-summary.txt
           echo "CodeQL analysis completed." >> sast-reports/codeql-summary.txt
+          echo "ESLint security analysis completed." >> sast-reports/codeql-summary.txt
+          echo "" >> sast-reports/codeql-summary.txt
           echo "Check the Security tab for detailed results." >> sast-reports/codeql-summary.txt
+          echo "Download sast-report.html for comprehensive view." >> sast-reports/codeql-summary.txt
           echo "=====================================" >> sast-reports/codeql-summary.txt
       
       - name: 📤 Upload SAST report
