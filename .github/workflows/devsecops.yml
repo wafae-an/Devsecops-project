@@ -8,7 +8,7 @@
 # - Dynamic Application Security Testing (DAST): OWASP ZAP baseline scan
 # 
 # All security reports are uploaded as artifacts for review.
-# ================================================================================a
+# ================================================================================
 
 name: DevSecOps Pipeline
 
@@ -108,7 +108,7 @@ jobs:
           path: app/ci-report.txt
           retention-days: 30
 
-    # ================================================================================
+  # ================================================================================
   # JOB 2: Static Application Security Testing (SAST) - CodeQL + HTML Report
   # ================================================================================
   sast-codeql:
@@ -139,9 +139,6 @@ jobs:
           upload: false
         continue-on-error: true
 
-      # --------------------------------------------------------------------------
-      # Convert SARIF → HTML avec sarif-tools (rapport visuel)
-      # --------------------------------------------------------------------------
       - name: 📄 Convert SARIF to HTML Report
         if: always()
         run: |
@@ -165,9 +162,6 @@ jobs:
           fi
         continue-on-error: true
 
-      # --------------------------------------------------------------------------
-      # Générer un résumé textuel avec statistiques
-      # --------------------------------------------------------------------------
       - name: 📊 Generate SAST Summary with Statistics
         if: always()
         run: |
@@ -208,9 +202,6 @@ jobs:
 
           cat sast-reports/codeql-summary.txt
 
-      # --------------------------------------------------------------------------
-      # Upload des rapports (SARIF + HTML + résumé)
-      # --------------------------------------------------------------------------
       - name: 📤 Upload SAST Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -221,9 +212,6 @@ jobs:
             sast-reports/
             codeql-results/*.sarif
           retention-days: 30
-
- 
-
 
   # ================================================================================
   # JOB 3: Software Composition Analysis (SCA)
@@ -321,35 +309,55 @@ jobs:
   dast-zap-scan:
     name: 🌐 DAST - OWASP ZAP Scan
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: 🐳 Start NodeGoat application
         working-directory: ./app
         run: |
-          echo "Starting NodeGoat with Docker Compose..."
-          docker-compose up -d
+          echo "🔨 Building and starting NodeGoat with Docker Compose..."
+          docker compose up -d --build
           
-          echo "Waiting for application to be ready..."
-          timeout=60
+          echo "⏳ Waiting for MongoDB to be ready..."
+          sleep 10
+          
+          echo "⏳ Waiting for NodeGoat application to be ready..."
+          timeout=120
           elapsed=0
-          until curl -f http://localhost:4000 >/dev/null 2>&1 || [ $elapsed -eq $timeout ]; do
-            echo "Waiting for NodeGoat to start... ($elapsed/$timeout seconds)"
+          
+          until curl -sf http://localhost:4000 >/dev/null 2>&1; do
+            if [ $elapsed -eq $timeout ]; then
+              echo "❌ Application failed to start within $timeout seconds"
+              echo ""
+              echo "📋 Docker Compose logs:"
+              docker compose logs
+              echo ""
+              echo "🐳 Container status:"
+              docker compose ps
+              echo ""
+              echo "🔍 Checking if containers are running:"
+              docker ps -a
+              exit 1
+            fi
+            
+            echo "⏱️  Waiting for NodeGoat... ($elapsed/$timeout seconds)"
             sleep 5
             elapsed=$((elapsed + 5))
           done
           
-          if [ $elapsed -eq $timeout ]; then
-            echo "❌ Application failed to start within $timeout seconds"
-            docker-compose logs
-            exit 1
-          fi
-          
           echo "✅ NodeGoat is running on http://localhost:4000"
-          docker-compose ps
-      
+          echo ""
+          echo "🐳 Container status:"
+          docker compose ps
+          echo ""
+          echo "🔍 Testing application response:"
+          curl -I http://localhost:4000 || true
+          echo ""
+          echo "📋 Recent logs:"
+          docker compose logs --tail=20
+
       - name: 🕷️ Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.10.0
         with:
@@ -357,24 +365,81 @@ jobs:
           rules_file_name: '.zap/rules.tsv'
           cmd_options: '-a -j -l PASS'
         continue-on-error: true
-      
-      - name: 📊 Generate DAST report summary
+
+      - name: 📊 Generate DAST Report Summary
         if: always()
         run: |
-          echo "=====================================" > dast-summary.txt
-          echo "OWASP ZAP DAST Scan Report" >> dast-summary.txt
-          echo "=====================================" >> dast-summary.txt
-          echo "" >> dast-summary.txt
-          echo "Timestamp: $(date)" >> dast-summary.txt
-          echo "Target: http://localhost:4000" >> dast-summary.txt
-          echo "Scanner: OWASP ZAP Baseline" >> dast-summary.txt
-          echo "" >> dast-summary.txt
-          echo "ZAP baseline scan completed." >> dast-summary.txt
-          echo "Review the detailed HTML report for findings." >> dast-summary.txt
-          echo "" >> dast-summary.txt
-          echo "=====================================" >> dast-summary.txt
-      
-      - name: 📤 Upload ZAP reports
+          mkdir -p dast-reports
+          
+          cat > dast-reports/dast-summary.txt << 'EOF'
+  =====================================
+  OWASP ZAP DAST Scan Report
+  =====================================
+
+  EOF
+          
+          echo "Timestamp: $(date)" >> dast-reports/dast-summary.txt
+          echo "Target: http://localhost:4000" >> dast-reports/dast-summary.txt
+          echo "Scanner: OWASP ZAP Baseline" >> dast-reports/dast-summary.txt
+          echo "" >> dast-reports/dast-summary.txt
+          
+          # Extraire les statistiques du rapport JSON si disponible
+          if [ -f "report_json.json" ]; then
+            echo "📊 Vulnerability Statistics:" >> dast-reports/dast-summary.txt
+            
+            # Compter les alertes par niveau de risque
+            HIGH=$(jq '[.site[].alerts[] | select(.riskcode=="3")] | length' report_json.json 2>/dev/null || echo "0")
+            MEDIUM=$(jq '[.site[].alerts[] | select(.riskcode=="2")] | length' report_json.json 2>/dev/null || echo "0")
+            LOW=$(jq '[.site[].alerts[] | select(.riskcode=="1")] | length' report_json.json 2>/dev/null || echo "0")
+            INFO=$(jq '[.site[].alerts[] | select(.riskcode=="0")] | length' report_json.json 2>/dev/null || echo "0")
+            TOTAL=$((HIGH + MEDIUM + LOW + INFO))
+            
+            cat >> dast-reports/dast-summary.txt << EOF
+  ├── 🔴 High Risk: $HIGH
+  ├── 🟠 Medium Risk: $MEDIUM
+  ├── 🟡 Low Risk: $LOW
+  ├── 🔵 Informational: $INFO
+  └── 📋 Total Alerts: $TOTAL
+
+  EOF
+            
+            # Calculer les pourcentages si des vulnérabilités sont trouvées
+            if [ "$TOTAL" -gt 0 ]; then
+              HIGH_PCT=$(awk "BEGIN {printf \"%.1f\", ($HIGH/$TOTAL)*100}")
+              MEDIUM_PCT=$(awk "BEGIN {printf \"%.1f\", ($MEDIUM/$TOTAL)*100}")
+              LOW_PCT=$(awk "BEGIN {printf \"%.1f\", ($LOW/$TOTAL)*100}")
+              INFO_PCT=$(awk "BEGIN {printf \"%.1f\", ($INFO/$TOTAL)*100}")
+              
+              cat >> dast-reports/dast-summary.txt << EOF
+  📈 Risk Distribution:
+  ├── High: $HIGH_PCT%
+  ├── Medium: $MEDIUM_PCT%
+  ├── Low: $LOW_PCT%
+  └── Info: $INFO_PCT%
+
+  EOF
+              
+              # Lister les principales vulnérabilités
+              echo "🔝 Top Vulnerabilities Found:" >> dast-reports/dast-summary.txt
+              jq -r '.site[].alerts[] | "  • [\(.risk | ascii_upcase)] \(.name) - Confidence: \(.confidence)"' report_json.json 2>/dev/null | sort -u | head -n 10 >> dast-reports/dast-summary.txt
+            else
+              echo "✅ No vulnerabilities detected!" >> dast-reports/dast-summary.txt
+            fi
+            
+          else
+            echo "⚠️  No JSON report found - scan may have failed or completed without findings" >> dast-reports/dast-summary.txt
+          fi
+          
+          echo "" >> dast-reports/dast-summary.txt
+          echo "📄 Full HTML report available in artifacts" >> dast-reports/dast-summary.txt
+          echo "=====================================" >> dast-reports/dast-summary.txt
+          
+          # Afficher le résumé dans les logs
+          echo ""
+          echo "📊 DAST Scan Summary:"
+          cat dast-reports/dast-summary.txt
+
+      - name: 📤 Upload ZAP Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -383,16 +448,15 @@ jobs:
             report_html.html
             report_md.md
             report_json.json
-            dast-summary.txt
+            dast-reports/
           retention-days: 30
-      
-      - name: 🧹 Cleanup Docker containers
+
+      - name: 🧹 Cleanup Docker Containers
         if: always()
         working-directory: ./app
         run: |
-          echo "Cleaning up Docker containers..."
-          docker-compose down -v
-          docker-compose ps
+          echo "🧹 Cleaning up Docker containers..."
+          docker compose down -v
           echo "✅ Cleanup completed"
 
   # ================================================================================
