@@ -321,6 +321,11 @@ jobs:
   dast-zap-scan:
     name: 🌐 DAST - OWASP ZAP Scan
     runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+      actions: read
+      security-events: write
 
     steps:
       - name: 📥 Checkout repository
