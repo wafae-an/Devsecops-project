@@ -146,28 +146,36 @@ jobs:
         continue-on-error: true
 
       # 🧠 Convertir le rapport SARIF généré par CodeQL en HTML lisible
+            # 🧠 Generate detailed HTML report using CodeQL CLI
       - name: 📄 Generate HTML report from SARIF
         if: always()
         run: |
-          echo "Generating HTML report from SARIF..."
+          echo "🔧 Installing CodeQL CLI..."
+          curl -LO https://github.com/github/codeql-cli-binaries/releases/latest/download/codeql.zip
+          unzip codeql.zip -d codeql-cli
+          sudo mv codeql-cli/codeql /usr/local/bin/codeql
+          codeql version
+
+          echo "📊 Generating CodeQL HTML report..."
           mkdir -p sast-html
-          SARIF_FILE="codeql-results/javascript.sarif"
 
-          # Télécharger et installer l’outil Microsoft SARIF Multitool
-          npm install -g @microsoft/sarif-multitool
+          if [ -f "codeql-results/javascript.sarif" ]; then
+            codeql database create codeql-db --language=javascript --source-root=app/app || true
 
-          if [ -f "$SARIF_FILE" ]; then
-            echo "SARIF file found: $SARIF_FILE"
-            npx @microsoft/sarif-multitool transform \
-              --tool="CodeQL" \
-              --output sast-html/codeql-report.html \
-              --format html \
-              "$SARIF_FILE"
-            echo "✅ HTML report generated successfully: sast-html/codeql-report.html"
+            # ✅ Crée le rapport HTML
+            codeql database analyze codeql-db \
+              --format=html \
+              --output=sast-html/codeql-report.html \
+              --sarif-category=security-extended \
+              --threads=2 \
+              --min-diagnostics=1 \
+              --verbosity=progress \
+              --ram=2048
           else
-            echo "❌ No SARIF file found, skipping HTML conversion."
+            echo "❌ SARIF file not found, skipping report generation."
           fi
         continue-on-error: true
+
 
       - name: 📊 Generate SAST report summary
         if: always()
