@@ -6,7 +6,7 @@
 # - Static Application Security Testing (SAST): CodeQL analysis
 # - Software Composition Analysis (SCA): Dependency vulnerability scanning
 # - Dynamic Application Security Testing (DAST): OWASP ZAP baseline scan
-# 
+#
 # All security reports are uploaded as artifacts for review.
 # ================================================================================
 
@@ -23,7 +23,7 @@ on:
       - main
       - master
       - develop
-  workflow_dispatch:  # Allow manual triggers
+  workflow_dispatch: # Allow manual triggers
 
 # Cancel in-progress runs of the same workflow
 concurrency:
@@ -37,25 +37,25 @@ jobs:
   continuous-integration:
     name: 🧱 Continuous Integration
     runs-on: ubuntu-latest
-    
+
     defaults:
       run:
         working-directory: ./app
-    
+
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: app/package-lock.json
-      
+
       - name: 📦 Install dependencies
         run: npm ci
-      
+
       - name: 🔨 Build application
         run: |
           if grep -q '"build"' package.json; then
@@ -64,7 +64,7 @@ jobs:
             echo "No build script found, skipping..."
           fi
         continue-on-error: true
-      
+
       - name: 🧪 Run tests
         run: |
           if grep -q '"test"' package.json; then
@@ -73,7 +73,7 @@ jobs:
             echo "No test script found, skipping..."
           fi
         continue-on-error: true
-      
+
       - name: 🔍 Run linter
         run: |
           if grep -q '"lint"' package.json; then
@@ -82,7 +82,7 @@ jobs:
             echo "No lint script found, skipping..."
           fi
         continue-on-error: true
-      
+
       - name: 📊 Generate CI report
         if: always()
         run: |
@@ -99,7 +99,7 @@ jobs:
           echo "Dependencies installed successfully" >> ci-report.txt
           echo "Build, test, and lint stages completed" >> ci-report.txt
           echo "=====================================" >> ci-report.txt
-      
+
       - name: 📤 Upload CI report
         if: always()
         uses: actions/upload-artifact@v4
@@ -212,332 +212,3 @@ jobs:
             sast-reports/
             codeql-results/*.sarif
           retention-days: 30
-
-  # ================================================================================
-  # JOB 3: Software Composition Analysis (SCA)
-  # ================================================================================
-  sca-dependencies:
-    name: 🧰 SCA - Dependency Scanning
-    runs-on: ubuntu-latest
-    
-    defaults:
-      run:
-        working-directory: ./app
-    
-    steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: 🟢 Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: app/package-lock.json
-      
-      - name: 📦 Install dependencies
-        run: npm ci
-      
-      - name: 🛡️ Run Snyk scan
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        run: |
-          if [ -n "$SNYK_TOKEN" ]; then
-            echo "Running Snyk security scan..."
-            npx snyk test --json > snyk-report.json || true
-            npx snyk test > snyk-report.txt || true
-            echo "Snyk scan completed"
-          else
-            echo "SNYK_TOKEN not found, skipping Snyk scan"
-            echo "To enable Snyk: Add SNYK_TOKEN to repository secrets"
-          fi
-        continue-on-error: true
-      
-      - name: 🔍 Run npm audit (fallback)
-        run: |
-          echo "Running npm audit..."
-          npm audit --json > audit-report.json || true
-          npm audit > audit-report.txt || true
-          echo "npm audit completed"
-        continue-on-error: true
-      
-      - name: 📊 Generate SCA summary report
-        if: always()
-        run: |
-          echo "=====================================" > sca-summary.txt
-          echo "Software Composition Analysis Report" >> sca-summary.txt
-          echo "=====================================" >> sca-summary.txt
-          echo "" >> sca-summary.txt
-          echo "Timestamp: $(date)" >> sca-summary.txt
-          echo "Project: OWASP NodeGoat" >> sca-summary.txt
-          echo "" >> sca-summary.txt
-          
-          if [ -f "snyk-report.json" ]; then
-            echo "✅ Snyk scan completed" >> sca-summary.txt
-            echo "   Report: snyk-report.json" >> sca-summary.txt
-          else
-            echo "⚠️  Snyk scan skipped (no SNYK_TOKEN)" >> sca-summary.txt
-          fi
-          
-          if [ -f "audit-report.json" ]; then
-            echo "✅ npm audit completed" >> sca-summary.txt
-            echo "   Report: audit-report.json" >> sca-summary.txt
-            echo "" >> sca-summary.txt
-            echo "--- npm audit summary ---" >> sca-summary.txt
-            cat audit-report.txt >> sca-summary.txt
-          fi
-          
-          echo "" >> sca-summary.txt
-          echo "=====================================" >> sca-summary.txt
-      
-      - name: 📤 Upload SCA reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: sca-dependency-reports
-          path: |
-            app/snyk-report.json
-            app/snyk-report.txt
-            app/audit-report.json
-            app/audit-report.txt
-            app/sca-summary.txt
-          retention-days: 30
-
-  # ================================================================================
-  # JOB 4: Dynamic Application Security Testing (DAST)
-  # ================================================================================
-  dast-zap-scan:
-    name: 🌐 DAST - OWASP ZAP Scan
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🐳 Start NodeGoat application
-        working-directory: ./app
-        run: |
-          echo "🔨 Building and starting NodeGoat with Docker Compose..."
-          docker compose up -d --build
-          
-          echo "⏳ Waiting for MongoDB to be ready..."
-          sleep 10
-          
-          echo "⏳ Waiting for NodeGoat application to be ready..."
-          timeout=120
-          elapsed=0
-          
-          until curl -sf http://localhost:4000 >/dev/null 2>&1; do
-            if [ $elapsed -eq $timeout ]; then
-              echo "❌ Application failed to start within $timeout seconds"
-              echo ""
-              echo "📋 Docker Compose logs:"
-              docker compose logs
-              echo ""
-              echo "🐳 Container status:"
-              docker compose ps
-              echo ""
-              echo "🔍 Checking if containers are running:"
-              docker ps -a
-              exit 1
-            fi
-            
-            echo "⏱️  Waiting for NodeGoat... ($elapsed/$timeout seconds)"
-            sleep 5
-            elapsed=$((elapsed + 5))
-          done
-          
-          echo "✅ NodeGoat is running on http://localhost:4000"
-          echo ""
-          echo "🐳 Container status:"
-          docker compose ps
-          echo ""
-          echo "🔍 Testing application response:"
-          curl -I http://localhost:4000 || true
-          echo ""
-          echo "📋 Recent logs:"
-          docker compose logs --tail=20
-
-      - name: 🕷️ Run OWASP ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.10.0
-        with:
-          target: 'http://localhost:4000'
-          rules_file_name: '.zap/rules.tsv'
-          cmd_options: '-a -j -l PASS'
-        continue-on-error: true
-
-      - name: 📊 Generate DAST Report Summary
-        if: always()
-        run: |
-          mkdir -p dast-reports
-          
-          cat > dast-reports/dast-summary.txt << 'EOF'
-  =====================================
-  OWASP ZAP DAST Scan Report
-  =====================================
-
-  EOF
-          
-          echo "Timestamp: $(date)" >> dast-reports/dast-summary.txt
-          echo "Target: http://localhost:4000" >> dast-reports/dast-summary.txt
-          echo "Scanner: OWASP ZAP Baseline" >> dast-reports/dast-summary.txt
-          echo "" >> dast-reports/dast-summary.txt
-          
-          # Extraire les statistiques du rapport JSON si disponible
-          if [ -f "report_json.json" ]; then
-            echo "📊 Vulnerability Statistics:" >> dast-reports/dast-summary.txt
-            
-            # Compter les alertes par niveau de risque
-            HIGH=$(jq '[.site[].alerts[] | select(.riskcode=="3")] | length' report_json.json 2>/dev/null || echo "0")
-            MEDIUM=$(jq '[.site[].alerts[] | select(.riskcode=="2")] | length' report_json.json 2>/dev/null || echo "0")
-            LOW=$(jq '[.site[].alerts[] | select(.riskcode=="1")] | length' report_json.json 2>/dev/null || echo "0")
-            INFO=$(jq '[.site[].alerts[] | select(.riskcode=="0")] | length' report_json.json 2>/dev/null || echo "0")
-            TOTAL=$((HIGH + MEDIUM + LOW + INFO))
-            
-            cat >> dast-reports/dast-summary.txt << EOF
-  ├── 🔴 High Risk: $HIGH
-  ├── 🟠 Medium Risk: $MEDIUM
-  ├── 🟡 Low Risk: $LOW
-  ├── 🔵 Informational: $INFO
-  └── 📋 Total Alerts: $TOTAL
-
-  EOF
-            
-            # Calculer les pourcentages si des vulnérabilités sont trouvées
-            if [ "$TOTAL" -gt 0 ]; then
-              HIGH_PCT=$(awk "BEGIN {printf \"%.1f\", ($HIGH/$TOTAL)*100}")
-              MEDIUM_PCT=$(awk "BEGIN {printf \"%.1f\", ($MEDIUM/$TOTAL)*100}")
-              LOW_PCT=$(awk "BEGIN {printf \"%.1f\", ($LOW/$TOTAL)*100}")
-              INFO_PCT=$(awk "BEGIN {printf \"%.1f\", ($INFO/$TOTAL)*100}")
-              
-              cat >> dast-reports/dast-summary.txt << EOF
-  📈 Risk Distribution:
-  ├── High: $HIGH_PCT%
-  ├── Medium: $MEDIUM_PCT%
-  ├── Low: $LOW_PCT%
-  └── Info: $INFO_PCT%
-
-  EOF
-              
-              # Lister les principales vulnérabilités
-              echo "🔝 Top Vulnerabilities Found:" >> dast-reports/dast-summary.txt
-              jq -r '.site[].alerts[] | "  • [\(.risk | ascii_upcase)] \(.name) - Confidence: \(.confidence)"' report_json.json 2>/dev/null | sort -u | head -n 10 >> dast-reports/dast-summary.txt
-            else
-              echo "✅ No vulnerabilities detected!" >> dast-reports/dast-summary.txt
-            fi
-            
-          else
-            echo "⚠️  No JSON report found - scan may have failed or completed without findings" >> dast-reports/dast-summary.txt
-          fi
-          
-          echo "" >> dast-reports/dast-summary.txt
-          echo "📄 Full HTML report available in artifacts" >> dast-reports/dast-summary.txt
-          echo "=====================================" >> dast-reports/dast-summary.txt
-          
-          # Afficher le résumé dans les logs
-          echo ""
-          echo "📊 DAST Scan Summary:"
-          cat dast-reports/dast-summary.txt
-
-      - name: 📤 Upload ZAP Reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dast-zap-report
-          path: |
-            report_html.html
-            report_md.md
-            report_json.json
-            dast-reports/
-          retention-days: 30
-
-      - name: 🧹 Cleanup Docker Containers
-        if: always()
-        working-directory: ./app
-        run: |
-          echo "🧹 Cleaning up Docker containers..."
-          docker compose down -v
-          echo "✅ Cleanup completed"
-
-  # ================================================================================
-  # JOB 5: Final Report Aggregation
-  # ================================================================================
-  generate-final-report:
-    name: 🧾 Generate Final DevSecOps Report
-    runs-on: ubuntu-latest
-    needs: [continuous-integration, sast-codeql, sca-dependencies, dast-zap-scan]
-    if: always()
-    
-    steps:
-      - name: 📥 Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: all-reports
-      
-      - name: 📊 Generate consolidated report
-        run: |
-          echo "==========================================================" > final-devsecops-report.txt
-          echo "         DevSecOps Pipeline - Final Report" >> final-devsecops-report.txt
-          echo "         OWASP NodeGoat Security Assessment" >> final-devsecops-report.txt
-          echo "==========================================================" >> final-devsecops-report.txt
-          echo "" >> final-devsecops-report.txt
-          echo "Pipeline Run: ${{ github.run_number }}" >> final-devsecops-report.txt
-          echo "Timestamp: $(date)" >> final-devsecops-report.txt
-          echo "Branch: ${{ github.ref_name }}" >> final-devsecops-report.txt
-          echo "Commit: ${{ github.sha }}" >> final-devsecops-report.txt
-          echo "Triggered by: ${{ github.actor }}" >> final-devsecops-report.txt
-          echo "" >> final-devsecops-report.txt
-          echo "==========================================================" >> final-devsecops-report.txt
-          echo "Pipeline Stages Summary" >> final-devsecops-report.txt
-          echo "==========================================================" >> final-devsecops-report.txt
-          echo "" >> final-devsecops-report.txt
-          
-          # Check job statuses
-          echo "✅ Stage 1: Continuous Integration (CI)" >> final-devsecops-report.txt
-          echo "   Status: ${{ needs.continuous-integration.result }}" >> final-devsecops-report.txt
-          echo "" >> final-devsecops-report.txt
-          
-          echo "✅ Stage 2: SAST - CodeQL Analysis" >> final-devsecops-report.txt
-          echo "   Status: ${{ needs.sast-codeql.result }}" >> final-devsecops-report.txt
-          echo "" >> final-devsecops-report.txt
-          
-          echo "✅ Stage 3: SCA - Dependency Scanning" >> final-devsecops-report.txt
-          echo "   Status: ${{ needs.sca-dependencies.result }}" >> final-devsecops-report.txt
-          echo "" >> final-devsecops-report.txt
-          
-          echo "✅ Stage 4: DAST - OWASP ZAP Scan" >> final-devsecops-report.txt
-          echo "   Status: ${{ needs.dast-zap-scan.result }}" >> final-devsecops-report.txt
-          echo "" >> final-devsecops-report.txt
-          
-          echo "==========================================================" >> final-devsecops-report.txt
-          echo "Available Reports" >> final-devsecops-report.txt
-          echo "==========================================================" >> final-devsecops-report.txt
-          echo "" >> final-devsecops-report.txt
-          
-          find all-reports -type f | while read file; do
-            echo "📄 $file" >> final-devsecops-report.txt
-          done
-          
-          echo "" >> final-devsecops-report.txt
-          echo "==========================================================" >> final-devsecops-report.txt
-          echo "Next Steps" >> final-devsecops-report.txt
-          echo "==========================================================" >> final-devsecops-report.txt
-          echo "" >> final-devsecops-report.txt
-          echo "1. Review all security findings in the artifacts" >> final-devsecops-report.txt
-          echo "2. Check the Security tab for CodeQL alerts" >> final-devsecops-report.txt
-          echo "3. Prioritize and remediate high/critical vulnerabilities" >> final-devsecops-report.txt
-          echo "4. Update dependencies with security patches" >> final-devsecops-report.txt
-          echo "5. Re-run the pipeline after fixes" >> final-devsecops-report.txt
-          echo "" >> final-devsecops-report.txt
-          echo "==========================================================" >> final-devsecops-report.txt
-          
-          cat final-devsecops-report.txt
-      
-      - name: 📤 Upload final consolidated report
-        uses: actions/upload-artifact@v4
-        with:
-          name: final-devsecops-report
-          path: |
-            final-devsecops-report.txt
-            all-reports/
-          retention-days: 90
