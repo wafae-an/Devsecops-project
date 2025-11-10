@@ -472,7 +472,100 @@ jobs:
             all-reports/
           retention-days: 90
 
-
-          
-
+   # ================================================================================
+  # JOB 6: Parse and Normalize Security Reports
+  # ================================================================================
+  parse-security-reports:
+    name: 🧠 Parse and Normalize Security Reports
+    runs-on: ubuntu-latest
+    needs: [sast-codeql, sca-dependencies, dast-zap-scan]
   
+    steps:
+      # --------------------------------------------------------------------------
+      # Étape 1 : Cloner le dépôt
+      # --------------------------------------------------------------------------
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+  
+      # --------------------------------------------------------------------------
+      # Étape 2 : Télécharger les artefacts SAST
+      # --------------------------------------------------------------------------
+      - name: 📥 Download SAST artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sast-codeql-report
+          path: ./reports/sast
+  
+      # --------------------------------------------------------------------------
+      # Étape 3 : Télécharger les artefacts SCA
+      # --------------------------------------------------------------------------
+      - name: 📥 Download SCA artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sca-dependency-reports
+          path: ./reports/sca
+  
+      # --------------------------------------------------------------------------
+      # Étape 4 : Télécharger les artefacts DAST
+      # --------------------------------------------------------------------------
+      - name: 📥 Download DAST artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dast-zap-report
+          path: ./reports/dast
+  
+      # --------------------------------------------------------------------------
+      # Étape 5 : Vérifier le contenu téléchargé
+      # --------------------------------------------------------------------------
+      - name: 📂 List downloaded files
+        run: |
+          echo "📁 Files downloaded:"
+          ls -R ./reports || echo "⚠️ Aucun fichier trouvé !"
+  
+      # --------------------------------------------------------------------------
+      # Étape 6 : Installer Node.js pour exécuter le parser
+      # --------------------------------------------------------------------------
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+  
+      # --------------------------------------------------------------------------
+      # Étape 7 : Créer le dossier de sortie
+      # --------------------------------------------------------------------------
+      - name: 📁 Create output directory
+        run: mkdir -p ./parsed-reports
+  
+      # --------------------------------------------------------------------------
+      # Étape 8 : Exécuter le parser
+      # --------------------------------------------------------------------------
+      - name: 🧠 Run Parser
+        run: |
+          echo "🚀 Running AI Parser..."
+          node ./app/ai-parser.js
+        env:
+          REPORTS_DIR: ./reports
+          OUTPUT_DIR: ./parsed-reports
+          NODE_ENV: production
+  
+      # --------------------------------------------------------------------------
+      # Étape 9 : Vérifier la sortie générée
+      # --------------------------------------------------------------------------
+      - name: 📜 List parsed JSON files
+        run: |
+          echo "✅ Parsed JSON files generated:"
+          ls -R ./parsed-reports || echo "⚠️ Aucun fichier généré par le parser."
+  
+      # --------------------------------------------------------------------------
+      # Étape 10 : Sauvegarder les fichiers JSON produits
+      # --------------------------------------------------------------------------
+      - name: 📤 Upload parsed JSON artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parsed-security-reports
+          path: ./parsed-reports/
+          retention-days: 30
+        
+  
+    
