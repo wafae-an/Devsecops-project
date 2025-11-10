@@ -1,4 +1,3 @@
-# ================================================================================
 # DevSecOps Pipeline for OWASP NodeGoat
 # ================================================================================
 # This workflow implements a complete DevSecOps pipeline with:
@@ -8,7 +7,7 @@
 # - Dynamic Application Security Testing (DAST): OWASP ZAP baseline scan
 # 
 # All security reports are uploaded as artifacts for review.
-# ================================================================================a
+# ================================================================================
 
 name: DevSecOps Pipeline
 
@@ -25,7 +24,6 @@ on:
       - develop
   workflow_dispatch:  # Allow manual triggers
 
-# Cancel in-progress runs of the same workflow
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -37,25 +35,23 @@ jobs:
   continuous-integration:
     name: 🧱 Continuous Integration
     runs-on: ubuntu-latest
-    
     defaults:
       run:
         working-directory: ./app
-    
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: app/package-lock.json
-      
+
       - name: 📦 Install dependencies
         run: npm ci
-      
+
       - name: 🔨 Build application
         run: |
           if grep -q '"build"' package.json; then
@@ -64,7 +60,7 @@ jobs:
             echo "No build script found, skipping..."
           fi
         continue-on-error: true
-      
+
       - name: 🧪 Run tests
         run: |
           if grep -q '"test"' package.json; then
@@ -73,7 +69,7 @@ jobs:
             echo "No test script found, skipping..."
           fi
         continue-on-error: true
-      
+
       - name: 🔍 Run linter
         run: |
           if grep -q '"lint"' package.json; then
@@ -82,7 +78,7 @@ jobs:
             echo "No lint script found, skipping..."
           fi
         continue-on-error: true
-      
+
       - name: 📊 Generate CI report
         if: always()
         run: |
@@ -99,27 +95,25 @@ jobs:
           echo "Dependencies installed successfully" >> ci-report.txt
           echo "Build, test, and lint stages completed" >> ci-report.txt
           echo "=====================================" >> ci-report.txt
-      
+
       - name: 📤 Upload CI report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ci-report
           path: app/ci-report.txt
-          retention-days: 30
+          retention-days: 3
 
-    # ================================================================================
+  # ================================================================================
   # JOB 2: Static Application Security Testing (SAST) - CodeQL + HTML Report
   # ================================================================================
   sast-codeql:
     name: 🔍 SAST - CodeQL Analysis
     runs-on: ubuntu-latest
-
     permissions:
       security-events: write
       actions: read
       contents: read
-
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
@@ -135,14 +129,11 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:javascript"
-          output: codeql-results
+          output: sast-codeql-report
           upload: false
         continue-on-error: true
 
-      # --------------------------------------------------------------------------
-      # Convert SARIF → HTML avec sarif-tools (rapport visuel)
-      # --------------------------------------------------------------------------
-      - name: 📄 Convert SARIF to HTML Report
+      - name: 📄 Convert SARIF to HTML + Summary
         if: always()
         run: |
           echo "🔧 Installing Python and sarif-tools..."
@@ -150,80 +141,53 @@ jobs:
           sudo apt-get install -y python3-pip jq
           pip install sarif-tools
 
-          echo "📊 Generating HTML report from SARIF..."
-          mkdir -p sast-html
+          echo "📊 Generating HTML and summary reports..."
+          mkdir -p sast-codeql-report
 
-          SARIF_FILE=$(find codeql-results -name "*.sarif" | head -n 1)
-
+          SARIF_FILE=$(find sast-codeql-report -name "*.sarif" | head -n 1)
           if [ -f "$SARIF_FILE" ]; then
             echo "✅ SARIF file found: $SARIF_FILE"
-            sarif html "$SARIF_FILE" -o sast-html/codeql-report.html
-            sarif summary "$SARIF_FILE" > sast-html/codeql-summary.txt
-          else
-            echo "❌ No SARIF file found. Creating placeholder report."
-            echo "<html><body><h2>No vulnerabilities detected or analysis failed</h2></body></html>" > sast-html/codeql-report.html
-          fi
-        continue-on-error: true
+            sarif html "$SARIF_FILE" -o sast-codeql-report/codeql-report.html
+            sarif summary "$SARIF_FILE" > sast-codeql-report/codeql-summary.txt
 
-      # --------------------------------------------------------------------------
-      # Générer un résumé textuel avec statistiques
-      # --------------------------------------------------------------------------
-      - name: 📊 Generate SAST Summary with Statistics
-        if: always()
-        run: |
-          mkdir -p sast-reports
-          SARIF_FILE=$(find codeql-results -name "*.sarif" | head -n 1)
-
-          echo "=====================================" > sast-reports/codeql-summary.txt
-          echo "CodeQL SAST Analysis Report" >> sast-reports/codeql-summary.txt
-          echo "=====================================" >> sast-reports/codeql-summary.txt
-          echo "" >> sast-reports/codeql-summary.txt
-          echo "Timestamp: $(date)" >> sast-reports/codeql-summary.txt
-          echo "Language: JavaScript" >> sast-reports/codeql-summary.txt
-          echo "Queries: security-extended, security-and-quality" >> sast-reports/codeql-summary.txt
-          echo "" >> sast-reports/codeql-summary.txt
-
-          if [ -f "$SARIF_FILE" ]; then
-            echo "📊 Extracting vulnerability statistics..."
             ERROR_COUNT=$(jq '[.runs[].results[] | select(.level=="error")] | length' "$SARIF_FILE")
             WARNING_COUNT=$(jq '[.runs[].results[] | select(.level=="warning")] | length' "$SARIF_FILE")
             NOTE_COUNT=$(jq '[.runs[].results[] | select(.level=="note")] | length' "$SARIF_FILE")
             TOTAL_COUNT=$(jq '[.runs[].results[]] | length' "$SARIF_FILE")
 
-            echo "🔴 Critical/Error: $ERROR_COUNT" >> sast-reports/codeql-summary.txt
-            echo "🟡 Warning: $WARNING_COUNT" >> sast-reports/codeql-summary.txt
-            echo "🔵 Note/Info: $NOTE_COUNT" >> sast-reports/codeql-summary.txt
-            echo "📋 Total Issues: $TOTAL_COUNT" >> sast-reports/codeql-summary.txt
-            echo "" >> sast-reports/codeql-summary.txt
-
-            echo "Top 10 vulnerabilities:" >> sast-reports/codeql-summary.txt
-            jq -r '.runs[].results[] | "• [\(.level)] \(.ruleId): \(.message.text)"' "$SARIF_FILE" | head -n 10 >> sast-reports/codeql-summary.txt
+            {
+              echo "====================================="
+              echo "CodeQL SAST Analysis Report"
+              echo "====================================="
+              echo "Timestamp: $(date)"
+              echo "Language: JavaScript"
+              echo "Queries: security-extended, security-and-quality"
+              echo ""
+              echo "🔴 Critical/Error: $ERROR_COUNT"
+              echo "🟡 Warning: $WARNING_COUNT"
+              echo "🔵 Note/Info: $NOTE_COUNT"
+              echo "📋 Total Issues: $TOTAL_COUNT"
+              echo ""
+              echo "Top 10 vulnerabilities:"
+              jq -r '.runs[].results[] | "• [\(.level)] \(.ruleId): \(.message.text)"' "$SARIF_FILE" | head -n 10
+              echo ""
+              echo "Full HTML report available: codeql-report.html"
+              echo "====================================="
+            } > sast-codeql-report/summary.txt
           else
-            echo "✅ No vulnerabilities detected." >> sast-reports/codeql-summary.txt
+            echo "❌ No SARIF file found. Creating placeholder."
+            echo "<html><body><h2>No vulnerabilities detected or analysis failed</h2></body></html>" > sast-codeql-report/codeql-report.html
+            echo "No vulnerabilities detected." > sast-codeql-report/summary.txt
           fi
+        continue-on-error: true
 
-          echo "" >> sast-reports/codeql-summary.txt
-          echo "Full HTML report available in: sast-html/codeql-report.html" >> sast-reports/codeql-summary.txt
-          echo "=====================================" >> sast-reports/codeql-summary.txt
-
-          cat sast-reports/codeql-summary.txt
-
-      # --------------------------------------------------------------------------
-      # Upload des rapports (SARIF + HTML + résumé)
-      # --------------------------------------------------------------------------
-      - name: 📤 Upload SAST Reports
+      - name: 📤 Upload SAST Report Folder
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: sast-codeql-report
-          path: |
-            sast-html/
-            sast-reports/
-            codeql-results/*.sarif
+          path: sast-codeql-report/
           retention-days: 30
-
- 
-
 
   # ================================================================================
   # JOB 3: Software Composition Analysis (SCA)
@@ -231,25 +195,23 @@ jobs:
   sca-dependencies:
     name: 🧰 SCA - Dependency Scanning
     runs-on: ubuntu-latest
-    
     defaults:
       run:
         working-directory: ./app
-    
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: 🟢 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: app/package-lock.json
-      
+
       - name: 📦 Install dependencies
         run: npm ci
-      
+
       - name: 🛡️ Run Snyk scan
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
@@ -258,13 +220,11 @@ jobs:
             echo "Running Snyk security scan..."
             npx snyk test --json > snyk-report.json || true
             npx snyk test > snyk-report.txt || true
-            echo "Snyk scan completed"
           else
             echo "SNYK_TOKEN not found, skipping Snyk scan"
-            echo "To enable Snyk: Add SNYK_TOKEN to repository secrets"
           fi
         continue-on-error: true
-      
+
       - name: 🔍 Run npm audit (fallback)
         run: |
           echo "Running npm audit..."
@@ -272,7 +232,7 @@ jobs:
           npm audit > audit-report.txt || true
           echo "npm audit completed"
         continue-on-error: true
-      
+
       - name: 📊 Generate SCA summary report
         if: always()
         run: |
@@ -283,14 +243,14 @@ jobs:
           echo "Timestamp: $(date)" >> sca-summary.txt
           echo "Project: OWASP NodeGoat" >> sca-summary.txt
           echo "" >> sca-summary.txt
-          
+
           if [ -f "snyk-report.json" ]; then
             echo "✅ Snyk scan completed" >> sca-summary.txt
             echo "   Report: snyk-report.json" >> sca-summary.txt
           else
             echo "⚠️  Snyk scan skipped (no SNYK_TOKEN)" >> sca-summary.txt
           fi
-          
+
           if [ -f "audit-report.json" ]; then
             echo "✅ npm audit completed" >> sca-summary.txt
             echo "   Report: audit-report.json" >> sca-summary.txt
@@ -298,10 +258,9 @@ jobs:
             echo "--- npm audit summary ---" >> sca-summary.txt
             cat audit-report.txt >> sca-summary.txt
           fi
-          
           echo "" >> sca-summary.txt
           echo "=====================================" >> sca-summary.txt
-      
+
       - name: 📤 Upload SCA reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -321,12 +280,10 @@ jobs:
   dast-zap-scan:
     name: 🌐 DAST - OWASP ZAP Scan
     runs-on: ubuntu-latest
-    
     permissions:
       contents: write
       actions: read
       security-events: write
-
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
@@ -336,107 +293,74 @@ jobs:
         run: |
           echo "🔨 Building and starting NodeGoat with Docker Compose..."
           docker compose up -d --build
-          
           echo "⏳ Waiting for MongoDB to be ready..."
           sleep 10
-          
           echo "⏳ Waiting for NodeGoat application to be ready..."
           timeout=120
           elapsed=0
-          
           until curl -sf http://localhost:4000 >/dev/null 2>&1; do
-            if [ $elapsed -eq $timeout ]; then
+            if [ $elapsed -ge $timeout ]; then
               echo "❌ Application failed to start within $timeout seconds"
-              echo ""
-              echo "📋 Docker Compose logs:"
               docker compose logs
-              echo ""
-              echo "🐳 Container status:"
               docker compose ps
-              echo ""
-              echo "🔍 Checking if containers are running:"
               docker ps -a
               exit 1
             fi
-            
             echo "⏱️  Waiting for NodeGoat... ($elapsed/$timeout seconds)"
             sleep 5
             elapsed=$((elapsed + 5))
           done
-          
           echo "✅ NodeGoat is running on http://localhost:4000"
-          echo ""
-          echo "🐳 Container status:"
-          docker compose ps
-          echo ""
-          echo "🔍 Testing application response:"
-          curl -I http://localhost:4000 || true
-          echo ""
-          echo "📋 Recent logs:"
-          docker compose logs --tail=20
 
-          
       - name: 🕷️ Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.10.0
         with:
-          target: 'http://localhost:4000'        # URL de l'application à scanner
-          rules_file_name: '.zap/rules.tsv'     # Fichier de règles personnalisées ZAP
-          cmd_options: '-a -j -l PASS'          # Options supplémentaires pour le scan
-        continue-on-error: true                  # Ne pas échouer le pipeline en cas de vulnérabilités
-
+          target: 'http://localhost:4000'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a -j -l PASS'
+        continue-on-error: true
 
       - name: 📊 Generate DAST Report Summary
         if: always()
         run: |
           mkdir -p dast-reports
-          
           echo "=====================================" > dast-reports/dast-summary.txt
           echo "OWASP ZAP DAST Scan Report" >> dast-reports/dast-summary.txt
           echo "=====================================" >> dast-reports/dast-summary.txt
-          echo "" >> dast-reports/dast-summary.txt
-          
           echo "Timestamp: $(date)" >> dast-reports/dast-summary.txt
           echo "Target: http://localhost:4000" >> dast-reports/dast-summary.txt
           echo "Scanner: OWASP ZAP Baseline" >> dast-reports/dast-summary.txt
-          echo "" >> dast-reports/dast-summary.txt
-          
-          # Extract vulnerability statistics from JSON report if available
+
           if [ -f "report_json.json" ]; then
-            echo "📊 Vulnerability Statistics:" >> dast-reports/dast-summary.txt
-            
-            # Count alerts by risk level
             HIGH=$(jq '[.site[].alerts[] | select(.riskcode=="3")] | length' report_json.json 2>/dev/null || echo "0")
             MEDIUM=$(jq '[.site[].alerts[] | select(.riskcode=="2")] | length' report_json.json 2>/dev/null || echo "0")
             LOW=$(jq '[.site[].alerts[] | select(.riskcode=="1")] | length' report_json.json 2>/dev/null || echo "0")
             INFO=$(jq '[.site[].alerts[] | select(.riskcode=="0")] | length' report_json.json 2>/dev/null || echo "0")
             TOTAL=$((HIGH + MEDIUM + LOW + INFO))
-            
+
             {
               echo "├── 🔴 High Risk: $HIGH"
               echo "├── 🟠 Medium Risk: $MEDIUM"
               echo "├── 🟡 Low Risk: $LOW"
               echo "├── 🔵 Informational: $INFO"
               echo "└── 📋 Total Alerts: $TOTAL"
-              echo ""
             } >> dast-reports/dast-summary.txt
-            
-            # Calculate percentages if vulnerabilities are found
+
             if [ "$TOTAL" -gt 0 ]; then
               HIGH_PCT=$(awk "BEGIN {printf \"%.1f\", ($HIGH/$TOTAL)*100}")
               MEDIUM_PCT=$(awk "BEGIN {printf \"%.1f\", ($MEDIUM/$TOTAL)*100}")
               LOW_PCT=$(awk "BEGIN {printf \"%.1f\", ($LOW/$TOTAL)*100}")
               INFO_PCT=$(awk "BEGIN {printf \"%.1f\", ($INFO/$TOTAL)*100}")
-              
+
               {
                 echo "📈 Risk Distribution:"
                 echo "├── High: $HIGH_PCT%"
                 echo "├── Medium: $MEDIUM_PCT%"
                 echo "├── Low: $LOW_PCT%"
                 echo "└── Info: $INFO_PCT%"
-                echo ""
+                echo "🔝 Top Vulnerabilities Found:"
               } >> dast-reports/dast-summary.txt
-              
-              echo "🔝 Top Vulnerabilities Found:" >> dast-reports/dast-summary.txt
+
               jq -r '.site[].alerts[] | "  • [\(.risk | ascii_upcase)] \(.name) - Confidence: \(.confidence)"' report_json.json 2>/dev/null | sort -u | head -n 10 >> dast-reports/dast-summary.txt
             else
               echo "✅ No vulnerabilities detected!" >> dast-reports/dast-summary.txt
@@ -444,14 +368,6 @@ jobs:
           else
             echo "⚠️  No JSON report found — scan may have failed or completed without findings." >> dast-reports/dast-summary.txt
           fi
-          
-          echo "" >> dast-reports/dast-summary.txt
-          echo "📄 Full HTML report available in artifacts." >> dast-reports/dast-summary.txt
-          echo "=====================================" >> dast-reports/dast-summary.txt
-          
-          echo ""
-          echo "📊 DAST Scan Summary:"
-          cat dast-reports/dast-summary.txt
 
       - name: 📤 Upload ZAP Reports
         if: always()
@@ -469,9 +385,8 @@ jobs:
         if: always()
         working-directory: ./app
         run: |
-          echo "🧹 Cleaning up Docker containers..."
           docker compose down -v
-          echo "✅ Cleanup completed"
+
 
   # ================================================================================
   # JOB 5: Final Report Aggregation
