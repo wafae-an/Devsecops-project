@@ -273,10 +273,9 @@ jobs:
             app/audit-report.txt
             app/sca-summary.txt
           retention-days: 30
-
-  # ================================================================================
+  # ============================================================================
   # JOB 4: Dynamic Application Security Testing (DAST)
-  # ================================================================================
+  # ============================================================================
   dast-zap-scan:
     name: 🌐 DAST - OWASP ZAP Scan
     runs-on: ubuntu-latest
@@ -287,7 +286,7 @@ jobs:
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
-
+  
       - name: 🐳 Start NodeGoat application
         working-directory: ./app
         run: |
@@ -306,12 +305,12 @@ jobs:
               docker ps -a
               exit 1
             fi
-            echo "⏱️  Waiting for NodeGoat... ($elapsed/$timeout seconds)"
+            echo "⏱️ Waiting for NodeGoat... ($elapsed/$timeout seconds)"
             sleep 5
             elapsed=$((elapsed + 5))
           done
           echo "✅ NodeGoat is running on http://localhost:4000"
-
+  
       - name: 🕷️ Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.10.0
         with:
@@ -319,44 +318,37 @@ jobs:
           rules_file_name: '.zap/rules.tsv'
           cmd_options: '-a -j -l PASS'
         continue-on-error: true
-
+  
       - name: 📊 Generate DAST Report Summary
         if: always()
         run: |
-          mkdir -p dast-temp
-          
-          # Copier les fichiers principaux dans le dossier temporaire
-          cp report_html.html report_md.md report_json.json 2>/dev/null || true
-          
-          # Générer le résumé et le placer dans le dossier temporaire
-          echo "=====================================" > dast-temp/dast-summary.txt
-          echo "OWASP ZAP DAST Scan Report" >> dast-temp/dast-summary.txt
-          echo "=====================================" >> dast-temp/dast-summary.txt
-          echo "Timestamp: $(date)" >> dast-temp/dast-summary.txt
-          echo "Target: http://localhost:4000" >> dast-temp/dast-summary.txt
-          echo "Scanner: OWASP ZAP Baseline" >> dast-temp/dast-summary.txt
-          
+          echo "=====================================" > dast-summary.txt
+          echo "OWASP ZAP DAST Scan Report" >> dast-summary.txt
+          echo "=====================================" >> dast-summary.txt
+          echo "Timestamp: $(date)" >> dast-summary.txt
+          echo "Target: http://localhost:4000" >> dast-summary.txt
+          echo "Scanner: OWASP ZAP Baseline" >> dast-summary.txt
+  
           if [ -f "report_json.json" ]; then
             HIGH=$(jq '[.site[].alerts[] | select(.riskcode=="3")] | length' report_json.json 2>/dev/null || echo "0")
             MEDIUM=$(jq '[.site[].alerts[] | select(.riskcode=="2")] | length' report_json.json 2>/dev/null || echo "0")
             LOW=$(jq '[.site[].alerts[] | select(.riskcode=="1")] | length' report_json.json 2>/dev/null || echo "0")
             INFO=$(jq '[.site[].alerts[] | select(.riskcode=="0")] | length' report_json.json 2>/dev/null || echo "0")
             TOTAL=$((HIGH + MEDIUM + LOW + INFO))
-            
+  
             {
               echo "├── 🔴 High Risk: $HIGH"
               echo "├── 🟠 Medium Risk: $MEDIUM"
               echo "├── 🟡 Low Risk: $LOW"
               echo "├── 🔵 Informational: $INFO"
               echo "└── 📋 Total Alerts: $TOTAL"
-            } >> dast-temp/dast-summary.txt
-            
+            } >> dast-summary.txt
+  
             if [ "$TOTAL" -gt 0 ]; then
               HIGH_PCT=$(awk "BEGIN {printf \"%.1f\", ($HIGH/$TOTAL)*100}")
               MEDIUM_PCT=$(awk "BEGIN {printf \"%.1f\", ($MEDIUM/$TOTAL)*100}")
               LOW_PCT=$(awk "BEGIN {printf \"%.1f\", ($LOW/$TOTAL)*100}")
               INFO_PCT=$(awk "BEGIN {printf \"%.1f\", ($INFO/$TOTAL)*100}")
-              
               {
                 echo "📈 Risk Distribution:"
                 echo "├── High: $HIGH_PCT%"
@@ -364,30 +356,33 @@ jobs:
                 echo "├── Low: $LOW_PCT%"
                 echo "└── Info: $INFO_PCT%"
                 echo "🔝 Top Vulnerabilities Found:"
-              } >> dast-temp/dast-summary.txt
-              
-              jq -r '.site[].alerts[] | "  • [\(.risk | ascii_upcase)] \(.name) - Confidence: \(.confidence)"' report_json.json 2>/dev/null | sort -u | head -n 10 >> dast-temp/dast-summary.txt
+              } >> dast-summary.txt
+  
+              jq -r '.site[].alerts[] | "  • [\(.risk | ascii_upcase)] \(.name) - Confidence: \(.confidence)"' report_json.json 2>/dev/null | sort -u | head -n 10 >> dast-summary.txt
             else
-              echo "✅ No vulnerabilities detected!" >> dast-temp/dast-summary.txt
+              echo "✅ No vulnerabilities detected!" >> dast-summary.txt
             fi
           else
-            echo "⚠️  No JSON report found — scan may have failed or completed without findings." >> dast-temp/dast-summary.txt
+            echo "⚠️ No JSON report found — scan may have failed or completed without findings." >> dast-summary.txt
           fi
-
-      - name: 📤 Upload ZAP Reports (flat)
+  
+      - name: 📤 Upload ZAP Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dast-zap-report
-          path: dast-temp/*
-          retention-days: 30     
-
+          path: |
+            report_html.html
+            report_md.md
+            report_json.json
+            dast-summary.txt
+          retention-days: 30
+  
       - name: 🧹 Cleanup Docker Containers
         if: always()
         working-directory: ./app
         run: |
           docker compose down -v
-
 
   # ================================================================================
   # JOB 5: Final Report Aggregation
