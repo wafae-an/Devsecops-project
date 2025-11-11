@@ -552,7 +552,7 @@ jobs:
           echo "✅ Parsed JSON files generated:"
           ls -R ./parsed-reports || echo "⚠️ Aucun fichier généré par le parser."
   
-      # --------------------------------------------------------------------------
+            # --------------------------------------------------------------------------
       # Étape 10 : Sauvegarder les fichiers JSON produits
       # --------------------------------------------------------------------------
       - name: 📤 Upload parsed JSON artifacts
@@ -562,9 +562,9 @@ jobs:
           name: parsed-security-reports
           path: ./parsed-reports/
           retention-days: 30
-
-            # --------------------------------------------------------------------------
-      # Étape : 🤖 AI Recommender - Génération de rapports automatiques
+      
+      # --------------------------------------------------------------------------
+      # Étape 11 : 🤖 AI Recommender - Génération de rapports automatiques
       # --------------------------------------------------------------------------
       - name: 📥 Download parsed security reports
         uses: actions/download-artifact@v4
@@ -576,15 +576,36 @@ jobs:
         run: |
           echo "🚀 Starting AI Recommender..."
           mkdir -p ai-reports
-          node app/ai_recommender.js ./parsed-security-reports ./ai-reports
-          echo "✅ AI-generated reports are ready in ./ai-reports"
+          
+          # Vérifier que les fichiers sources existent
+          if [ -z "$(ls -A ./parsed-security-reports 2>/dev/null)" ]; then
+            echo "⚠️  Warning: No files found in ./parsed-security-reports"
+            echo "Creating placeholder file..."
+            echo '{"status": "no_reports_found"}' > ai-reports/placeholder.json
+          else
+            echo "📂 Found files in ./parsed-security-reports:"
+            ls -la ./parsed-security-reports
+            
+            # Exécuter le script AI
+            node app/ai_recommender.js ./parsed-security-reports ./ai-reports
+            
+            # Vérifier que des fichiers ont été générés
+            if [ -z "$(ls -A ./ai-reports 2>/dev/null)" ]; then
+              echo "⚠️  Warning: AI Recommender didn't generate any files"
+              echo '{"status": "generation_failed"}' > ai-reports/error.json
+            else
+              echo "✅ AI-generated reports are ready:"
+              ls -la ./ai-reports
+            fi
+          fi
       
       - name: 📤 Upload AI-generated reports
+        if: always()  # Important : upload même en cas d'échec
         uses: actions/upload-artifact@v4
         with:
           name: ai-generated-reports
-          path: ./ai-reports
+          path: ./ai-reports/
+          if-no-files-found: warn  # ou 'error' si vous voulez que ça échoue
           retention-days: 30
-      
-        
-          
+              
+                
