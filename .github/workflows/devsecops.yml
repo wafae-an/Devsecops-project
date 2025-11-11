@@ -576,7 +576,7 @@ jobs:
         run: |
           echo "🚀 Starting AI Recommender..."
           mkdir -p ai-reports
-          node ai-recommender.js ./parsed-security-reports ./ai-reports
+          node app/ai-recommender.js ./parsed-security-reports ./ai-reports
           echo "✅ AI-generated reports are ready in ./ai-reports"
       
       - name: 📤 Upload AI-generated reports
