@@ -562,6 +562,29 @@ jobs:
           name: parsed-security-reports
           path: ./parsed-reports/
           retention-days: 30
+
+            # --------------------------------------------------------------------------
+      # Étape : 🤖 AI Recommender - Génération de rapports automatiques
+      # --------------------------------------------------------------------------
+      - name: 📥 Download parsed security reports
+        uses: actions/download-artifact@v4
+        with:
+          name: parsed-security-reports
+          path: ./parsed-security-reports
+      
+      - name: 🤖 Run AI Recommender
+        run: |
+          echo "🚀 Starting AI Recommender..."
+          mkdir -p ai-reports
+          node ai-recommender.js ./parsed-security-reports ./ai-reports
+          echo "✅ AI-generated reports are ready in ./ai-reports"
+      
+      - name: 📤 Upload AI-generated reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-generated-reports
+          path: ./ai-reports
+          retention-days: 30
+      
         
-  
-    
+          
