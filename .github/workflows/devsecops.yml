@@ -563,8 +563,31 @@ jobs:
           path: ./parsed-reports/
           retention-days: 30
       
+           # --------------------------------------------------------------------------
+      # Étape 11 : 🦙 Installation d'Ollama et LLaMA
       # --------------------------------------------------------------------------
-      # Étape 11 : 🤖 AI Recommender - Génération de rapports automatiques
+      - name: 🦙 Install and Setup Ollama
+        run: |
+          echo "📦 Installation d'Ollama..."
+          curl -fsSL https://ollama.com/install.sh | sh
+          
+          echo "🚀 Démarrage du service Ollama en arrière-plan..."
+          nohup ollama serve > /tmp/ollama.log 2>&1 &
+          
+          echo "⏳ Attente du démarrage du service (15 secondes)..."
+          sleep 15
+          
+          echo "✅ Vérification du service Ollama..."
+          curl -s http://localhost:11434/api/tags || echo "⚠️ Ollama ne répond pas encore"
+          
+          echo "📥 Téléchargement du modèle LLaMA 3.2..."
+          ollama pull llama3.2
+          
+          echo "✅ Ollama est prêt ! Modèles disponibles :"
+          ollama list
+      
+      # --------------------------------------------------------------------------
+      # Étape 12 : 📥 Télécharger les rapports parsés
       # --------------------------------------------------------------------------
       - name: 📥 Download parsed security reports
         uses: actions/download-artifact@v4
@@ -572,40 +595,48 @@ jobs:
           name: parsed-security-reports
           path: ./parsed-security-reports
       
-      - name: 🤖 Run AI Recommender
+      - name: 🔍 Verify downloaded files
         run: |
-          echo "🚀 Starting AI Recommender..."
-          mkdir -p ai-reports
+          echo "📂 Contenu de ./parsed-security-reports :"
+          ls -la ./parsed-security-reports || echo "⚠️ Dossier vide ou introuvable"
           
-          # Vérifier que les fichiers sources existent
-          if [ -z "$(ls -A ./parsed-security-reports 2>/dev/null)" ]; then
-            echo "⚠️  Warning: No files found in ./parsed-security-reports"
-            echo "Creating placeholder file..."
-            echo '{"status": "no_reports_found"}' > ai-reports/placeholder.json
+          if [ -d "./parsed-security-reports/prompts" ]; then
+            echo "📝 Prompts trouvés :"
+            ls -la ./parsed-security-reports/prompts
           else
-            echo "📂 Found files in ./parsed-security-reports:"
-            ls -la ./parsed-security-reports
-            
-            # Exécuter le script AI
-            node app/ai_recommender.js ./parsed-security-reports ./ai-reports
-            
-            # Vérifier que des fichiers ont été générés
-            if [ -z "$(ls -A ./ai-reports 2>/dev/null)" ]; then
-              echo "⚠️  Warning: AI Recommender didn't generate any files"
-              echo '{"status": "generation_failed"}' > ai-reports/error.json
-            else
-              echo "✅ AI-generated reports are ready:"
-              ls -la ./ai-reports
-            fi
+            echo "⚠️ Aucun dossier 'prompts' trouvé"
           fi
       
+      # --------------------------------------------------------------------------
+      # Étape 13 : 🤖 Exécuter AI Recommender avec LLaMA
+      # --------------------------------------------------------------------------
+      - name: 🤖 Run AI Recommender (LLaMA)
+        run: |
+          echo "🚀 Starting AI Recommender with LLaMA..."
+          mkdir -p ai-reports
+          
+          # Vérifier qu'Ollama fonctionne
+          if ! curl -s http://localhost:11434/api/tags > /dev/null; then
+            echo "❌ Ollama n'est pas accessible, redémarrage..."
+            nohup ollama serve > /tmp/ollama.log 2>&1 &
+            sleep 10
+          fi
+          
+          # Exécuter le script AI Recommender
+          node app/ai_recommender.js ./parsed-security-reports ./ai-reports
+          
+          echo "✅ AI-generated reports are ready!"
+          echo "📊 Contenu de ./ai-reports :"
+          ls -lah ./ai-reports
+      
+      # --------------------------------------------------------------------------
+      # Étape 14 : 📤 Upload des rapports IA générés
+      # --------------------------------------------------------------------------
       - name: 📤 Upload AI-generated reports
-        if: always()  # Important : upload même en cas d'échec
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ai-generated-reports
           path: ./ai-reports/
-          if-no-files-found: warn  # ou 'error' si vous voulez que ça échoue
+          if-no-files-found: warn
           retention-days: 30
-              
-                
