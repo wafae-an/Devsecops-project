@@ -192,7 +192,7 @@ function checkOllamaAvailability() {
   // Vérifier que le dossier des prompts existe
   if (!fs.existsSync(PROMPTS_DIR)) {
     console.error(`Erreur : Le dossier de prompts n'existe pas : ${PROMPTS_DIR}`);
-    console.log('Création d'un rapport d'erreur...');
+    console.log("Création d'un rapport d'erreur...");
     
     const errorReport = {
       status: 'error',
@@ -206,17 +206,17 @@ function checkOllamaAvailability() {
   }
 
   // Vérifier la disponibilité d'Ollama
-  console.log('Vérification de la disponibilité d'Ollama...');
+  console.log("Vérification de la disponibilité d'Ollama...");
   const ollamaStatus = await checkOllamaAvailability();
   
   if (!ollamaStatus.available) {
-    console.warn('Ollama n'est pas disponible. Les rapports seront générés sans analyse IA.');
-    console.log('Pour utiliser l'IA, installez Ollama : https://ollama.ai\n');
+    console.warn("Ollama n'est pas disponible. Les rapports seront générés sans analyse IA.");
+    console.log("Pour utiliser l'IA, installez Ollama : https://ollama.ai\n");
   } else if (!ollamaStatus.hasModel) {
     console.warn(`Le modèle ${LLM_MODEL} n'est pas installé.`);
     console.log(`Installez-le avec : ollama pull ${LLM_MODEL}\n`);
   } else {
-    console.log('Ollama est disponible et le modèle est prêt !\n');
+    console.log("Ollama est disponible et le modèle est prêt !\n");
   }
 
   // Lire les fichiers de prompts
