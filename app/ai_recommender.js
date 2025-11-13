@@ -8,7 +8,7 @@
  *
  * Prérequis :
  * - Ollama installé et en cours d'exécution
- * - Modèle LLaMA téléchargé : ollama pull llama3.2
+ * - Modèle LLaMA téléchargé : ollama pull llama3.2:3b
  * - Node.js >= 18
  *
  * Usage:
@@ -256,6 +256,13 @@ function queryOllama(prompt) {
 
     const req = http.request(options, res => {
       let data = '';
+      
+      // ✅ CORRECTION: Gérer les codes d'erreur HTTP
+      if (res.statusCode !== 200) {
+        reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+        return;
+      }
+      
       res.on('data', chunk => (data += chunk));
       res.on('end', () => {
         try {
@@ -302,7 +309,14 @@ function checkOllamaAvailability() {
         try {
           const response = JSON.parse(data);
           const models = response.models || [];
-          const hasModel = models.some(m => m.name.includes(LLM_MODEL.split(':')[0]));
+          
+          // ✅ CORRECTION: Vérification plus souple du modèle
+          const modelBaseName = LLM_MODEL.split(':')[0]; // "llama3.2"
+          const hasModel = models.some(m => {
+            // Accepter "llama3.2", "llama3.2:3b", "llama3.2:latest", etc.
+            return m.name === LLM_MODEL || m.name.startsWith(modelBaseName);
+          });
+          
           resolve({ 
             available: true, 
             hasModel,
@@ -325,32 +339,59 @@ function checkOllamaAvailability() {
 }
 
 // ============================================================================
-// FORMATAGE MARKDOWN → HTML
+// FORMATAGE MARKDOWN → HTML (AMÉLIORÉ)
 // ============================================================================
 function simpleMarkdownToHTML(text) {
-  return text
-    // Titres
-    .replace(/^### (.*?)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.*?)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.*?)$/gm, '<h1>$1</h1>')
-    // Gras et italique
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    // Code inline
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    // Blocs de code
-    .replace(/```[\s\S]*?```/g, match => {
-      const code = match.replace(/```\w*\n?/g, '');
-      return `<pre><code>${code}</code></pre>`;
-    })
-    // Listes
-    .replace(/^\* (.*?)$/gm, '<li>$1</li>')
-    .replace(/^- (.*?)$/gm, '<li>$1</li>')
-    .replace(/^\d+\. (.*?)$/gm, '<li>$1</li>')
-    // Paragraphes
-    .replace(/\n\n/g, '</p><p>')
-    // Sauts de ligne
-    .replace(/\n/g, '<br>');
+  let html = text;
+  
+  // Blocs de code (avant tout le reste)
+  html = html.replace(/```([\s\S]*?)```/g, (match, code) => {
+    return `<pre><code>${code.trim()}</code></pre>`;
+  });
+  
+  // Titres
+  html = html.replace(/^### (.*?)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.*?)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.*?)$/gm, '<h1>$1</h1>');
+  
+  // Gras et italique
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
+  
+  // Code inline (éviter les blocs déjà traités)
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  
+  // ✅ CORRECTION: Listes avec wrapping <ul> et <ol>
+  // Listes non ordonnées
+  html = html.replace(/((?:^[*-] .*$\n?)+)/gm, (match) => {
+    const items = match.split('\n')
+      .filter(line => line.trim())
+      .map(line => line.replace(/^[*-] /, ''))
+      .map(item => `<li>${item}</li>`)
+      .join('\n');
+    return `<ul>\n${items}\n</ul>`;
+  });
+  
+  // Listes ordonnées
+  html = html.replace(/((?:^\d+\. .*$\n?)+)/gm, (match) => {
+    const items = match.split('\n')
+      .filter(line => line.trim())
+      .map(line => line.replace(/^\d+\. /, ''))
+      .map(item => `<li>${item}</li>`)
+      .join('\n');
+    return `<ol>\n${items}\n</ol>`;
+  });
+  
+  // Paragraphes (éviter d'ajouter <p> dans les balises HTML)
+  html = html.split('\n\n').map(block => {
+    // Ne pas wrapper si c'est déjà du HTML
+    if (block.trim().startsWith('<')) {
+      return block;
+    }
+    return `<p>${block.replace(/\n/g, '<br>')}</p>`;
+  }).join('\n');
+  
+  return html;
 }
 
 // ============================================================================
@@ -406,6 +447,7 @@ function simpleMarkdownToHTML(text) {
     const errorReport = {
       status: 'error',
       message: `Model ${LLM_MODEL} not found`,
+      requested_model: LLM_MODEL,
       available_models: ollamaStatus.models,
       timestamp: new Date().toISOString()
     };
@@ -472,13 +514,13 @@ function simpleMarkdownToHTML(text) {
       console.log(`   ✅ Réponse reçue (${duration}s)`);
       console.log('   📝 Génération du rapport HTML...');
       
-      // Convertir le markdown en HTML si nécessaire
+      // Convertir le markdown en HTML
       const formattedContent = simpleMarkdownToHTML(llmResponse);
       
       const htmlContent = `
         <h1>🔒 ${type.toUpperCase()} Security Report</h1>
         <div class="ai-analysis">
-          <p>${formattedContent}</p>
+          ${formattedContent}
         </div>
       `;
       
