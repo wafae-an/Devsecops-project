@@ -33,26 +33,26 @@ jobs:
   # JOB 1: Continuous Integration (CI)
   # ================================================================================
   continuous-integration:
-    name: 🧱 Continuous Integration
+    name: Continuous Integration
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./app
     steps:
-      - name: 📥 Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🟢 Setup Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: app/package-lock.json
 
-      - name: 📦 Install dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: 🔨 Build application
+      - name: Build application
         run: |
           if grep -q '"build"' package.json; then
             npm run build
@@ -61,7 +61,7 @@ jobs:
           fi
         continue-on-error: true
 
-      - name: 🧪 Run tests
+      - name: Run tests
         run: |
           if grep -q '"test"' package.json; then
             npm test
@@ -70,7 +70,7 @@ jobs:
           fi
         continue-on-error: true
 
-      - name: 🔍 Run linter
+      - name: Run linter
         run: |
           if grep -q '"lint"' package.json; then
             npm run lint
@@ -79,7 +79,7 @@ jobs:
           fi
         continue-on-error: true
 
-      - name: 📊 Generate CI report
+      - name: Generate CI report
         if: always()
         run: |
           echo "=====================================" > ci-report.txt
@@ -96,7 +96,7 @@ jobs:
           echo "Build, test, and lint stages completed" >> ci-report.txt
           echo "=====================================" >> ci-report.txt
 
-      - name: 📤 Upload CI report
+      - name: Upload CI report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -108,23 +108,23 @@ jobs:
   # JOB 2: Static Application Security Testing (SAST) - CodeQL + HTML Report
   # ================================================================================
   sast-codeql:
-    name: 🔍 SAST - CodeQL Analysis
+    name: SAST - CodeQL Analysis
     runs-on: ubuntu-latest
     permissions:
       security-events: write
       actions: read
       contents: read
     steps:
-      - name: 📥 Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🔧 Initialize CodeQL
+      - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
           languages: javascript
           queries: security-extended,security-and-quality
 
-      - name: 🔬 Perform CodeQL Analysis
+      - name: Perform CodeQL Analysis
         id: analyze
         uses: github/codeql-action/analyze@v3
         with:
@@ -133,20 +133,20 @@ jobs:
           upload: false
         continue-on-error: true
 
-      - name: 📄 Convert SARIF to HTML + Summary
+      - name: Convert SARIF to HTML + Summary
         if: always()
         run: |
-          echo "🔧 Installing Python and sarif-tools..."
+          echo "Installing Python and sarif-tools..."
           sudo apt-get update -y
           sudo apt-get install -y python3-pip jq
           pip install sarif-tools
 
-          echo "📊 Generating HTML and summary reports..."
+          echo "Generating HTML and summary reports..."
           mkdir -p sast-codeql-report
 
           SARIF_FILE=$(find sast-codeql-report -name "*.sarif" | head -n 1)
           if [ -f "$SARIF_FILE" ]; then
-            echo "✅ SARIF file found: $SARIF_FILE"
+            echo "SARIF file found: $SARIF_FILE"
             sarif html "$SARIF_FILE" -o sast-codeql-report/codeql-report.html
             sarif summary "$SARIF_FILE" > sast-codeql-report/codeql-summary.txt
 
@@ -163,25 +163,25 @@ jobs:
               echo "Language: JavaScript"
               echo "Queries: security-extended, security-and-quality"
               echo ""
-              echo "🔴 Critical/Error: $ERROR_COUNT"
-              echo "🟡 Warning: $WARNING_COUNT"
-              echo "🔵 Note/Info: $NOTE_COUNT"
-              echo "📋 Total Issues: $TOTAL_COUNT"
+              echo "Critical/Error: $ERROR_COUNT"
+              echo "Warning: $WARNING_COUNT"
+              echo "Note/Info: $NOTE_COUNT"
+              echo "Total Issues: $TOTAL_COUNT"
               echo ""
               echo "Top 10 vulnerabilities:"
-              jq -r '.runs[].results[] | "• [\(.level)] \(.ruleId): \(.message.text)"' "$SARIF_FILE" | head -n 10
+              jq -r '.runs[].results[] | "[\(.level)] \(.ruleId): \(.message.text)"' "$SARIF_FILE" | head -n 10
               echo ""
               echo "Full HTML report available: codeql-report.html"
               echo "====================================="
             } > sast-codeql-report/summary.txt
           else
-            echo "❌ No SARIF file found. Creating placeholder."
+            echo "No SARIF file found. Creating placeholder."
             echo "<html><body><h2>No vulnerabilities detected or analysis failed</h2></body></html>" > sast-codeql-report/codeql-report.html
             echo "No vulnerabilities detected." > sast-codeql-report/summary.txt
           fi
         continue-on-error: true
 
-      - name: 📤 Upload SAST Report Folder
+      - name: Upload SAST Report Folder
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -193,26 +193,26 @@ jobs:
   # JOB 3: Software Composition Analysis (SCA)
   # ================================================================================
   sca-dependencies:
-    name: 🧰 SCA - Dependency Scanning
+    name: SCA - Dependency Scanning
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./app
     steps:
-      - name: 📥 Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🟢 Setup Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: app/package-lock.json
 
-      - name: 📦 Install dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: 🛡️ Run Snyk scan
+      - name: Run Snyk scan
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: |
@@ -225,7 +225,7 @@ jobs:
           fi
         continue-on-error: true
 
-      - name: 🔍 Run npm audit (fallback)
+      - name: Run npm audit (fallback)
         run: |
           echo "Running npm audit..."
           npm audit --json > audit-report.json || true
@@ -233,7 +233,7 @@ jobs:
           echo "npm audit completed"
         continue-on-error: true
 
-      - name: 📊 Generate SCA summary report
+      - name: Generate SCA summary report
         if: always()
         run: |
           echo "=====================================" > sca-summary.txt
@@ -245,15 +245,15 @@ jobs:
           echo "" >> sca-summary.txt
 
           if [ -f "snyk-report.json" ]; then
-            echo "✅ Snyk scan completed" >> sca-summary.txt
-            echo "   Report: snyk-report.json" >> sca-summary.txt
+            echo "Snyk scan completed" >> sca-summary.txt
+            echo "Report: snyk-report.json" >> sca-summary.txt
           else
-            echo "⚠️  Snyk scan skipped (no SNYK_TOKEN)" >> sca-summary.txt
+            echo "Snyk scan skipped (no SNYK_TOKEN)" >> sca-summary.txt
           fi
 
           if [ -f "audit-report.json" ]; then
-            echo "✅ npm audit completed" >> sca-summary.txt
-            echo "   Report: audit-report.json" >> sca-summary.txt
+            echo "npm audit completed" >> sca-summary.txt
+            echo "Report: audit-report.json" >> sca-summary.txt
             echo "" >> sca-summary.txt
             echo "--- npm audit summary ---" >> sca-summary.txt
             cat audit-report.txt >> sca-summary.txt
@@ -261,7 +261,7 @@ jobs:
           echo "" >> sca-summary.txt
           echo "=====================================" >> sca-summary.txt
 
-      - name: 📤 Upload SCA reports
+      - name: Upload SCA reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -273,45 +273,46 @@ jobs:
             app/audit-report.txt
             app/sca-summary.txt
           retention-days: 30
-  # ============================================================================
+
+  # ================================================================================
   # JOB 4: Dynamic Application Security Testing (DAST)
-  # ============================================================================
+  # ================================================================================
   dast-zap-scan:
-    name: 🌐 DAST - OWASP ZAP Scan
+    name: DAST - OWASP ZAP Scan
     runs-on: ubuntu-latest
     permissions:
       contents: write
       actions: read
       security-events: write
     steps:
-      - name: 📥 Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
   
-      - name: 🐳 Start NodeGoat application
+      - name: Start NodeGoat application
         working-directory: ./app
         run: |
-          echo "🔨 Building and starting NodeGoat with Docker Compose..."
+          echo "Building and starting NodeGoat with Docker Compose..."
           docker compose up -d --build
-          echo "⏳ Waiting for MongoDB to be ready..."
+          echo "Waiting for MongoDB to be ready..."
           sleep 10
-          echo "⏳ Waiting for NodeGoat application to be ready..."
+          echo "Waiting for NodeGoat application to be ready..."
           timeout=120
           elapsed=0
           until curl -sf http://localhost:4000 >/dev/null 2>&1; do
             if [ $elapsed -ge $timeout ]; then
-              echo "❌ Application failed to start within $timeout seconds"
+              echo "Application failed to start within $timeout seconds"
               docker compose logs
               docker compose ps
               docker ps -a
               exit 1
             fi
-            echo "⏱️ Waiting for NodeGoat... ($elapsed/$timeout seconds)"
+            echo "Waiting for NodeGoat... ($elapsed/$timeout seconds)"
             sleep 5
             elapsed=$((elapsed + 5))
           done
-          echo "✅ NodeGoat is running on http://localhost:4000"
+          echo "NodeGoat is running on http://localhost:4000"
   
-      - name: 🕷️ Run OWASP ZAP Baseline Scan
+      - name: Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.10.0
         with:
           target: 'http://localhost:4000'
@@ -319,7 +320,7 @@ jobs:
           cmd_options: '-a -j -l PASS'
         continue-on-error: true
   
-      - name: 📊 Generate DAST Report Summary
+      - name: Generate DAST Report Summary
         if: always()
         run: |
           echo "=====================================" > dast-summary.txt
@@ -337,11 +338,11 @@ jobs:
             TOTAL=$((HIGH + MEDIUM + LOW + INFO))
   
             {
-              echo "├── 🔴 High Risk: $HIGH"
-              echo "├── 🟠 Medium Risk: $MEDIUM"
-              echo "├── 🟡 Low Risk: $LOW"
-              echo "├── 🔵 Informational: $INFO"
-              echo "└── 📋 Total Alerts: $TOTAL"
+              echo "High Risk: $HIGH"
+              echo "Medium Risk: $MEDIUM"
+              echo "Low Risk: $LOW"
+              echo "Informational: $INFO"
+              echo "Total Alerts: $TOTAL"
             } >> dast-summary.txt
   
             if [ "$TOTAL" -gt 0 ]; then
@@ -350,23 +351,23 @@ jobs:
               LOW_PCT=$(awk "BEGIN {printf \"%.1f\", ($LOW/$TOTAL)*100}")
               INFO_PCT=$(awk "BEGIN {printf \"%.1f\", ($INFO/$TOTAL)*100}")
               {
-                echo "📈 Risk Distribution:"
-                echo "├── High: $HIGH_PCT%"
-                echo "├── Medium: $MEDIUM_PCT%"
-                echo "├── Low: $LOW_PCT%"
-                echo "└── Info: $INFO_PCT%"
-                echo "🔝 Top Vulnerabilities Found:"
+                echo "Risk Distribution:"
+                echo "High: $HIGH_PCT%"
+                echo "Medium: $MEDIUM_PCT%"
+                echo "Low: $LOW_PCT%"
+                echo "Info: $INFO_PCT%"
+                echo "Top Vulnerabilities Found:"
               } >> dast-summary.txt
   
-              jq -r '.site[].alerts[] | "  • [\(.risk | ascii_upcase)] \(.name) - Confidence: \(.confidence)"' report_json.json 2>/dev/null | sort -u | head -n 10 >> dast-summary.txt
+              jq -r '.site[].alerts[] | "[\(.risk | ascii_upcase)] \(.name) - Confidence: \(.confidence)"' report_json.json 2>/dev/null | sort -u | head -n 10 >> dast-summary.txt
             else
-              echo "✅ No vulnerabilities detected!" >> dast-summary.txt
+              echo "No vulnerabilities detected!" >> dast-summary.txt
             fi
           else
-            echo "⚠️ No JSON report found — scan may have failed or completed without findings." >> dast-summary.txt
+            echo "No JSON report found — scan may have failed or completed without findings." >> dast-summary.txt
           fi
   
-      - name: 📤 Upload ZAP Reports
+      - name: Upload ZAP Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -378,28 +379,164 @@ jobs:
             dast-summary.txt
           retention-days: 30
   
-      - name: 🧹 Cleanup Docker Containers
+      - name: Cleanup Docker Containers
         if: always()
         working-directory: ./app
         run: |
           docker compose down -v
 
   # ================================================================================
-  # JOB 5: Final Report Aggregation
+  # JOB 5: Parse and Normalize Security Reports
+  # ================================================================================
+  parse-security-reports:
+    name: Parse and Normalize Security Reports
+    runs-on: ubuntu-latest
+    needs: [sast-codeql, sca-dependencies, dast-zap-scan]
+  
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+  
+      - name: Download SAST artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sast-codeql-report
+          path: ./reports/sast
+  
+      - name: Download SCA artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: sca-dependency-reports
+          path: ./reports/sca
+  
+      - name: Download DAST artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dast-zap-report
+          path: ./reports/dast
+  
+      - name: List downloaded files
+        run: |
+          echo "Files downloaded:"
+          ls -R ./reports || echo "No files found"
+  
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+  
+      - name: Create output directory
+        run: mkdir -p ./parsed-reports
+  
+      - name: Run Parser
+        run: |
+          echo "Running AI Parser..."
+          node ./app/ai-parser.js
+        env:
+          REPORTS_DIR: ./reports
+          OUTPUT_DIR: ./parsed-reports
+          NODE_ENV: production
+  
+      - name: List parsed JSON files
+        run: |
+          echo "Parsed JSON files generated:"
+          ls -R ./parsed-reports || echo "No files generated by parser"
+  
+      - name: Upload parsed JSON artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parsed-security-reports
+          path: ./parsed-reports/
+          retention-days: 30
+
+  # ================================================================================
+  # JOB 6: AI Analysis and Report Generation
+  # ================================================================================
+  ai-analysis:
+    name: AI Analysis and Report Generation
+    runs-on: ubuntu-latest
+    needs: [parse-security-reports]
+  
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Download parsed security reports
+        uses: actions/download-artifact@v4
+        with:
+          name: parsed-security-reports
+          path: ./parsed-security-reports
+
+      - name: Verify downloaded files
+        run: |
+          echo "Content of ./parsed-security-reports:"
+          ls -la ./parsed-security-reports || echo "Folder empty or not found"
+          
+          if [ -d "./parsed-security-reports/prompts" ]; then
+            echo "Prompts found:"
+            ls -la ./parsed-security-reports/prompts
+          else
+            echo "No 'prompts' folder found"
+          fi
+
+      - name: Run AI Recommender
+        run: |
+          echo "Starting AI Recommender..."
+          mkdir -p ai-reports
+          
+          # Check if source files exist
+          if [ -z "$(ls -A ./parsed-security-reports 2>/dev/null)" ]; then
+            echo "Warning: No files found in ./parsed-security-reports"
+            echo "Creating placeholder file..."
+            echo '{"status": "no_reports_found"}' > ai-reports/placeholder.json
+          else
+            echo "Found files in ./parsed-security-reports:"
+            ls -la ./parsed-security-reports
+            
+            # Run AI script
+            node app/ai_recommender.js ./parsed-security-reports ./ai-reports
+            
+            # Check if files were generated
+            if [ -z "$(ls -A ./ai-reports 2>/dev/null)" ]; then
+              echo "Warning: AI Recommender didn't generate any files"
+              echo '{"status": "generation_failed"}' > ai-reports/error.json
+            else
+              echo "AI-generated reports are ready:"
+              ls -la ./ai-reports
+            fi
+          fi
+
+      - name: Upload AI-generated reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-generated-reports
+          path: ./ai-reports/
+          if-no-files-found: warn
+          retention-days: 30
+
+  # ================================================================================
+  # JOB 7: Final Report Aggregation
   # ================================================================================
   generate-final-report:
-    name: 🧾 Generate Final DevSecOps Report
+    name: Generate Final DevSecOps Report
     runs-on: ubuntu-latest
-    needs: [continuous-integration, sast-codeql, sca-dependencies, dast-zap-scan]
+    needs: [continuous-integration, sast-codeql, sca-dependencies, dast-zap-scan, ai-analysis]
     if: always()
 
     steps:
-      - name: 📥 Download all artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: all-reports
 
-      - name: 📊 Generate consolidated report
+      - name: Generate consolidated report
         run: |
           echo "==========================================================" > final-devsecops-report.txt
           echo "         DevSecOps Pipeline - Final Report" >> final-devsecops-report.txt
@@ -419,20 +556,24 @@ jobs:
           echo "" >> final-devsecops-report.txt
 
           # Check job statuses
-          echo "✅ Stage 1: Continuous Integration (CI)" >> final-devsecops-report.txt
-          echo "   Status: ${{ needs.continuous-integration.result }}" >> final-devsecops-report.txt
+          echo "Stage 1: Continuous Integration (CI)" >> final-devsecops-report.txt
+          echo "Status: ${{ needs.continuous-integration.result }}" >> final-devsecops-report.txt
           echo "" >> final-devsecops-report.txt
 
-          echo "✅ Stage 2: SAST - CodeQL Analysis" >> final-devsecops-report.txt
-          echo "   Status: ${{ needs.sast-codeql.result }}" >> final-devsecops-report.txt
+          echo "Stage 2: SAST - CodeQL Analysis" >> final-devsecops-report.txt
+          echo "Status: ${{ needs.sast-codeql.result }}" >> final-devsecops-report.txt
           echo "" >> final-devsecops-report.txt
 
-          echo "✅ Stage 3: SCA - Dependency Scanning" >> final-devsecops-report.txt
-          echo "   Status: ${{ needs.sca-dependencies.result }}" >> final-devsecops-report.txt
+          echo "Stage 3: SCA - Dependency Scanning" >> final-devsecops-report.txt
+          echo "Status: ${{ needs.sca-dependencies.result }}" >> final-devsecops-report.txt
           echo "" >> final-devsecops-report.txt
 
-          echo "✅ Stage 4: DAST - OWASP ZAP Scan" >> final-devsecops-report.txt
-          echo "   Status: ${{ needs.dast-zap-scan.result }}" >> final-devsecops-report.txt
+          echo "Stage 4: DAST - OWASP ZAP Scan" >> final-devsecops-report.txt
+          echo "Status: ${{ needs.dast-zap-scan.result }}" >> final-devsecops-report.txt
+          echo "" >> final-devsecops-report.txt
+
+          echo "Stage 5: AI Analysis" >> final-devsecops-report.txt
+          echo "Status: ${{ needs.ai-analysis.result }}" >> final-devsecops-report.txt
           echo "" >> final-devsecops-report.txt
 
           echo "==========================================================" >> final-devsecops-report.txt
@@ -441,7 +582,7 @@ jobs:
           echo "" >> final-devsecops-report.txt
 
           find all-reports -type f | while read file; do
-            echo "📄 $file" >> final-devsecops-report.txt
+            echo "$file" >> final-devsecops-report.txt
           done
 
           echo "" >> final-devsecops-report.txt
@@ -459,7 +600,7 @@ jobs:
 
           cat final-devsecops-report.txt
 
-      - name: 📤 Upload final consolidated report
+      - name: Upload final consolidated report
         uses: actions/upload-artifact@v4
         with:
           name: final-devsecops-report
@@ -467,240 +608,3 @@ jobs:
             final-devsecops-report.txt
             all-reports/
           retention-days: 90
-
-   # ================================================================================
-  # JOB 6: Parse and Normalize Security Reports
-  # ================================================================================
-  parse-security-reports:
-    name: 🧠 Parse and Normalize Security Reports
-    runs-on: ubuntu-latest
-    needs: [sast-codeql, sca-dependencies, dast-zap-scan]
-  
-    steps:
-      # --------------------------------------------------------------------------
-      # Étape 1 : Cloner le dépôt
-      # --------------------------------------------------------------------------
-      - name: 📥 Checkout repository
-        uses: actions/checkout@v4
-  
-      # --------------------------------------------------------------------------
-      # Étape 2 : Télécharger les artefacts SAST
-      # --------------------------------------------------------------------------
-      - name: 📥 Download SAST artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: sast-codeql-report
-          path: ./reports/sast
-  
-      # --------------------------------------------------------------------------
-      # Étape 3 : Télécharger les artefacts SCA
-      # --------------------------------------------------------------------------
-      - name: 📥 Download SCA artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: sca-dependency-reports
-          path: ./reports/sca
-  
-      # --------------------------------------------------------------------------
-      # Étape 4 : Télécharger les artefacts DAST
-      # --------------------------------------------------------------------------
-      - name: 📥 Download DAST artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dast-zap-report
-          path: ./reports/dast
-  
-      # --------------------------------------------------------------------------
-      # Étape 5 : Vérifier le contenu téléchargé
-      # --------------------------------------------------------------------------
-      - name: 📂 List downloaded files
-        run: |
-          echo "📁 Files downloaded:"
-          ls -R ./reports || echo "⚠️ Aucun fichier trouvé !"
-  
-      # --------------------------------------------------------------------------
-      # Étape 6 : Installer Node.js pour exécuter le parser
-      # --------------------------------------------------------------------------
-      - name: 🟢 Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-  
-      # --------------------------------------------------------------------------
-      # Étape 7 : Créer le dossier de sortie
-      # --------------------------------------------------------------------------
-      - name: 📁 Create output directory
-        run: mkdir -p ./parsed-reports
-  
-      # --------------------------------------------------------------------------
-      # Étape 8 : Exécuter le parser
-      # --------------------------------------------------------------------------
-      - name: 🧠 Run Parser
-        run: |
-          echo "🚀 Running AI Parser..."
-          node ./app/ai-parser.js
-        env:
-          REPORTS_DIR: ./reports
-          OUTPUT_DIR: ./parsed-reports
-          NODE_ENV: production
-  
-      # --------------------------------------------------------------------------
-      # Étape 9 : Vérifier la sortie générée
-      # --------------------------------------------------------------------------
-      - name: 📜 List parsed JSON files
-        run: |
-          echo "✅ Parsed JSON files generated:"
-          ls -R ./parsed-reports || echo "⚠️ Aucun fichier généré par le parser."
-  
-            # --------------------------------------------------------------------------
-      # Étape 10 : Sauvegarder les fichiers JSON produits
-      # --------------------------------------------------------------------------
-      - name: 📤 Upload parsed JSON artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: parsed-security-reports
-          path: ./parsed-reports/
-          retention-days: 30
-      
-      # --------------------------------------------------------------------------
-      # Étape 11 : 📥 Télécharger les rapports parsés
-      # --------------------------------------------------------------------------
-      - name: 📥 Download parsed security reports
-        uses: actions/download-artifact@v4
-        with:
-          name: parsed-security-reports
-          path: ./parsed-security-reports
-      
-      - name: 🔍 Verify downloaded files
-        run: |
-          echo "📂 Contenu de ./parsed-security-reports :"
-          ls -la ./parsed-security-reports || echo "⚠️ Dossier vide ou introuvable"
-          
-          if [ -d "./parsed-security-reports/prompts" ]; then
-            echo "📝 Prompts trouvés :"
-            ls -la ./parsed-security-reports/prompts
-          else
-            echo "⚠️ Aucun dossier 'prompts' trouvé"
-          fi
-      
-                # --------------------------------------------------------------------------
-      # Étape 12 : 🦙🤖 Setup Ollama and Run AI Recommender (ULTRA ROBUSTE)
-      # --------------------------------------------------------------------------
-      - name: 🦙🤖 Setup Ollama and Run AI Recommender
-        run: |
-          set -e  # Arrêter en cas d'erreur
-          
-          echo "📦 Installation d'Ollama..."
-          curl -fsSL https://ollama.com/install.sh | sh
-          
-          echo "🔍 Vérification de l'installation..."
-          which ollama || (echo "❌ Ollama non installé" && exit 1)
-          ollama --version
-          
-          echo "🚀 Démarrage d'Ollama..."
-          # Utiliser nohup + disown pour détacher complètement le processus
-          nohup ollama serve > /tmp/ollama.log 2>&1 &
-          OLLAMA_PID=$!
-          disown  # Détacher du shell
-          
-          echo "📍 Ollama PID: $OLLAMA_PID"
-          
-          # Attendre avec des tests plus agressifs
-          echo "⏳ Attente du démarrage (jusqu'à 60 secondes)..."
-          for i in {1..30}; do
-            # Vérifier que le processus existe toujours
-            if ! kill -0 $OLLAMA_PID 2>/dev/null; then
-              echo "❌ Le processus Ollama est mort !"
-              echo "📝 Logs d'Ollama:"
-              cat /tmp/ollama.log
-              exit 1
-            fi
-            
-            # Tester la connexion
-            if curl -s -f http://localhost:11434/api/tags >/dev/null 2>&1; then
-              echo "✅ Ollama répond au bout de $((i*2)) secondes !"
-              break
-            fi
-            
-            echo "   Tentative $i/30 - En attente..."
-            sleep 2
-            
-            if [ $i -eq 30 ]; then
-              echo "❌ Timeout après 60 secondes"
-              echo "📝 Logs d'Ollama:"
-              cat /tmp/ollama.log
-              echo "📝 Processus:"
-              ps aux | grep ollama
-              echo "📝 Ports:"
-              netstat -tlnp 2>/dev/null | grep 11434 || ss -tlnp | grep 11434 || echo "Aucun port 11434"
-              exit 1
-            fi
-          done
-          
-          # Test approfondi de connexion
-          echo "🔍 Test approfondi de connexion..."
-          RESPONSE=$(curl -s http://localhost:11434/api/tags)
-          echo "📡 Réponse d'Ollama:"
-          echo "$RESPONSE" | head -20
-          
-          echo "📥 Téléchargement du modèle llama3.2:3b..."
-          ollama pull llama3.2:3b
-          
-          echo "✅ Modèles disponibles:"
-          ollama list
-          
-          # Double vérification avant de lancer Node.js
-          echo "🔍 Vérification finale avant Node.js..."
-          for i in {1..5}; do
-            if curl -s -f http://localhost:11434/api/tags >/dev/null 2>&1; then
-              echo "✅ Ollama toujours actif !"
-              break
-            fi
-            echo "⚠️ Ollama ne répond plus, attente..."
-            sleep 1
-          done
-          
-          # Afficher l'état juste avant Node.js
-          echo "📊 État du système avant Node.js:"
-          echo "Processus Ollama:"
-          ps aux | grep ollama | grep -v grep
-          echo "Port 11434:"
-          netstat -tlnp 2>/dev/null | grep 11434 || ss -tlnp | grep 11434
-          
-          echo "🤖 Lancement du AI Recommender..."
-          mkdir -p ai-reports
-          
-          # Lancer Node.js avec variables d'environnement explicites
-          OLLAMA_HOST=localhost OLLAMA_PORT=11434 LLM_MODEL=llama3.2:3b \
-            node app/ai_recommender.js ./parsed-security-reports ./ai-reports
-          
-          EXIT_CODE=$?
-          echo "📊 Code de sortie Node.js: $EXIT_CODE"
-          
-          # Vérifier les fichiers générés
-          echo "📂 Contenu de ai-reports:"
-          ls -lah ./ai-reports
-          
-          if [ -f "./ai-reports/error.json" ]; then
-            echo "⚠️ Fichier d'erreur détecté:"
-            cat ./ai-reports/error.json
-          fi
-          
-          # Nettoyer
-          echo "🛑 Arrêt d'Ollama..."
-          kill $OLLAMA_PID 2>/dev/null || true
-          pkill -f "ollama serve" || true
-          
-          exit $EXIT_CODE
-      # --------------------------------------------------------------------------
-      # Étape 13 : 📤 Upload des rapports IA générés
-      # --------------------------------------------------------------------------
-      - name: 📤 Upload AI-generated reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-generated-reports
-          path: ./ai-reports/
-          if-no-files-found: warn
-          retention-days: 30
