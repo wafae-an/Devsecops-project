@@ -584,61 +584,72 @@ jobs:
             echo "⚠️ Aucun dossier 'prompts' trouvé"
           fi
       
-      # --------------------------------------------------------------------------
-      # Étape 12 : 🦙🤖 Setup Ollama et Run AI Recommender (COMBINÉ)
+           # --------------------------------------------------------------------------
+      # Étape 12 : 🦙🤖 Setup Ollama and Run AI Recommender (SOLUTION DÉFINITIVE)
       # --------------------------------------------------------------------------
       - name: 🦙🤖 Setup Ollama and Run AI Recommender
         run: |
           echo "📦 Installation d'Ollama..."
           curl -fsSL https://ollama.com/install.sh | sh
           
-          echo "🚀 Démarrage du service Ollama en arrière-plan..."
-          ollama serve > /tmp/ollama.log 2>&1 &
+          echo "🚀 Démarrage d'Ollama en arrière-plan..."
+          nohup ollama serve > /tmp/ollama.log 2>&1 &
           OLLAMA_PID=$!
-          echo "📍 PID d'Ollama: $OLLAMA_PID"
+          echo "📍 Ollama PID: $OLLAMA_PID"
           
-          echo "⏳ Attente du démarrage du service..."
-          MAX_RETRIES=30
-          RETRY_COUNT=0
+          # Fonction de vérification avec retry
+          wait_for_ollama() {
+            local max_attempts=30
+            local attempt=0
+            
+            while [ $attempt -lt $max_attempts ]; do
+              if curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
+                echo "✅ Ollama répond !"
+                return 0
+              fi
+              attempt=$((attempt + 1))
+              echo "⏳ Tentative $attempt/$max_attempts..."
+              sleep 2
+            done
+            
+            echo "❌ Ollama n'a pas démarré"
+            return 1
+          }
           
-          while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-              echo "✅ Ollama est accessible !"
-              break
-            fi
-            echo "⏳ Tentative $((RETRY_COUNT + 1))/$MAX_RETRIES..."
-            sleep 2
-            RETRY_COUNT=$((RETRY_COUNT + 1))
-          done
-          
-          if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
-            echo "❌ Ollama n'a pas démarré après ${MAX_RETRIES} tentatives"
+          # Attendre qu'Ollama soit prêt
+          if ! wait_for_ollama; then
             echo "📝 Logs d'Ollama:"
             cat /tmp/ollama.log
+            echo "📝 Processus actifs:"
+            ps aux | grep ollama
             exit 1
           fi
           
           echo "📥 Téléchargement du modèle llama3.2:3b..."
           ollama pull llama3.2:3b
           
-          echo "✅ Ollama est prêt ! Modèles disponibles :"
+          echo "✅ Modèles disponibles:"
           ollama list
           
-          echo "🔍 Test de connexion à l'API Ollama..."
-          curl -s http://localhost:11434/api/tags | head -n 20
+          echo "🔍 Test final de connexion..."
+          curl -v http://localhost:11434/api/tags 2>&1 | head -20
           
           echo "🤖 Lancement du AI Recommender..."
           mkdir -p ai-reports
+          
+          # Lancer Node.js avec Ollama en arrière-plan actif
           node app/ai_recommender.js ./parsed-security-reports ./ai-reports
+          EXIT_CODE=$?
           
-          # Arrêter proprement Ollama
-          echo "🛑 Arrêt du service Ollama..."
-          kill $OLLAMA_PID 2>/dev/null || true
+          # Nettoyer
+          echo "🛑 Arrêt d'Ollama..."
+          kill $OLLAMA_PID 2>/dev/null || pkill -f "ollama serve" || true
           
-          echo "✅ AI-generated reports are ready!"
-          echo "📊 Contenu de ./ai-reports :"
+          echo "✅ Terminé avec code: $EXIT_CODE"
           ls -lah ./ai-reports
-      
+          
+          exit $EXIT_CODE
+            
       # --------------------------------------------------------------------------
       # Étape 13 : 📤 Upload des rapports IA générés
       # --------------------------------------------------------------------------
