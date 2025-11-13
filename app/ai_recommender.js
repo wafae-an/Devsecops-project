@@ -1,18 +1,16 @@
 #!/usr/bin/env node
 /**
  * ============================================================================
- * AI Recommender - Security Vulnerability Analysis with LLaMA via Ollama
+ * AI Recommender - Security Vulnerability Analysis with LLaMA (from Prompts)
  * ============================================================================
- * Ce script lit les prompts générés par le parser et génère des rapports
- * HTML à partir des réponses du modèle LLaMA via Ollama.
+ * Ce script lit les prompts générés par le parser dans :
+ *   ./parsed-security-reports/prompts/
+ * et génère des rapports HTML à partir des réponses du modèle LLaMA.
  *
  * Prérequis :
- * - Ollama installé et en cours d'exécution
- * - Modèle LLaMA téléchargé : ollama pull llama3.2:3b
+ * - Ollama installé localement (https://ollama.ai)
+ * - Modèle LLaMA téléchargé : ollama pull llama3.2
  * - Node.js >= 18
- *
- * Usage:
- *   node ai_recommender.js <input_dir> <output_dir>
  */
 
 const fs = require('fs');
@@ -24,21 +22,21 @@ const http = require('http');
 // ============================================================================
 const PROMPTS_DIR = process.argv[2] 
   ? path.join(process.argv[2], 'prompts')
-  : './parsed-security-reports/prompts';
+  : (process.env.PROMPTS_DIR || './parsed-security-reports/prompts');
 
 const OUTPUT_DIR = process.argv[3] 
   ? process.argv[3]
-  : './ai-reports';
+  : (process.env.OUTPUT_DIR || './ai-reports');
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'localhost';
 const OLLAMA_PORT = process.env.OLLAMA_PORT || '11434';
-const LLM_MODEL = process.env.LLM_MODEL || 'llama3.2:3b';
+const LLM_MODEL = process.env.LLM_MODEL || 'llama3.2';
 
-console.log('📋 Configuration:');
+console.log('Configuration:');
 console.log(`   - Prompts directory: ${PROMPTS_DIR}`);
 console.log(`   - Output directory: ${OUTPUT_DIR}`);
 console.log(`   - Ollama: ${OLLAMA_HOST}:${OLLAMA_PORT}`);
-console.log(`   - Model: ${LLM_MODEL}\n`);
+console.log(`   - Model: ${LLM_MODEL}`);
 
 // ============================================================================
 // OUTILS
@@ -46,19 +44,19 @@ console.log(`   - Model: ${LLM_MODEL}\n`);
 function ensureDirectoryExists(dir) {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
-    console.log(`📁 Dossier créé : ${dir}`);
+    console.log(`Dossier créé : ${dir}`);
   }
 }
 
 function readPrompt(filePath) {
   if (!fs.existsSync(filePath)) {
-    console.warn(`⚠️ Fichier prompt introuvable : ${filePath}`);
+    console.warn(`Fichier prompt introuvable : ${filePath}`);
     return null;
   }
   return fs.readFileSync(filePath, 'utf-8');
 }
 
-function writeHTMLReport(filePath, content, metadata = {}) {
+function writeHTMLReport(filePath, content) {
   const html = `
 <!DOCTYPE html>
 <html lang="fr">
@@ -67,179 +65,46 @@ function writeHTMLReport(filePath, content, metadata = {}) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${path.basename(filePath)}</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      padding: 40px 20px;
-    }
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      background: white;
-      border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-      padding: 40px;
-    }
-    h1 { 
-      color: #1a1a1a;
-      border-bottom: 4px solid #667eea;
-      padding-bottom: 15px;
-      margin-bottom: 30px;
-      font-size: 2.5em;
-    }
-    h2 { 
-      color: #667eea;
-      margin-top: 40px;
-      margin-bottom: 15px;
-      font-size: 1.8em;
-    }
-    h3 { 
-      color: #424242;
-      margin-top: 25px;
-      margin-bottom: 10px;
-    }
-    p { 
-      line-height: 1.8;
-      margin-bottom: 15px;
-      color: #333;
-    }
-    pre { 
-      background: #f5f5f5;
-      padding: 15px;
-      border-radius: 8px;
-      overflow-x: auto;
-      border-left: 4px solid #667eea;
-      margin: 15px 0;
-      font-size: 0.9em;
-    }
-    code { 
-      background: #e3f2fd;
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-family: 'Courier New', monospace;
-      font-size: 0.9em;
-    }
-    ul, ol {
-      margin: 15px 0 15px 30px;
-      line-height: 1.8;
-    }
-    li {
-      margin-bottom: 8px;
-    }
-    .severity-critical { 
-      color: #d32f2f;
-      font-weight: bold;
-      background: #ffebee;
-      padding: 4px 8px;
-      border-radius: 4px;
-    }
-    .severity-high { 
-      color: #f57c00;
-      font-weight: bold;
-      background: #fff3e0;
-      padding: 4px 8px;
-      border-radius: 4px;
-    }
-    .severity-medium { 
-      color: #fbc02d;
-      font-weight: bold;
-      background: #fffde7;
-      padding: 4px 8px;
-      border-radius: 4px;
-    }
-    .severity-low { 
-      color: #388e3c;
-      font-weight: bold;
-      background: #e8f5e9;
-      padding: 4px 8px;
-      border-radius: 4px;
-    }
-    .metadata {
-      background: #f8f9fa;
-      padding: 20px;
-      border-radius: 8px;
-      margin: 20px 0;
-      border-left: 4px solid #28a745;
-    }
-    .metadata p {
-      margin: 5px 0;
-      color: #555;
-      font-size: 0.95em;
-    }
-    .ai-analysis {
-      white-space: pre-wrap;
-      word-wrap: break-word;
-    }
-    footer { 
-      margin-top: 60px;
-      padding-top: 20px;
-      border-top: 2px solid #eee;
-      font-size: 0.9em;
-      color: #777;
-      text-align: center;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 20px 0;
-    }
-    th, td {
-      padding: 12px;
-      text-align: left;
-      border-bottom: 1px solid #ddd;
-    }
-    th {
-      background: #667eea;
-      color: white;
-      font-weight: 600;
-    }
-    tr:hover {
-      background: #f5f5f5;
-    }
+    body { font-family: Arial, sans-serif; margin: 40px; background: #fafafa; color: #333; }
+    h1 { color: #0d47a1; border-bottom: 3px solid #0d47a1; padding-bottom: 5px; }
+    h2 { color: #1976d2; margin-top: 30px; }
+    h3 { color: #424242; }
+    pre { background: #eee; padding: 10px; border-radius: 6px; overflow-x: auto; }
+    code { background: #e3f2fd; padding: 2px 6px; border-radius: 3px; font-family: monospace; }
+    .severity-critical { color: #d32f2f; font-weight: bold; }
+    .severity-high { color: #f57c00; font-weight: bold; }
+    .severity-medium { color: #fbc02d; font-weight: bold; }
+    .severity-low { color: #388e3c; font-weight: bold; }
+    footer { margin-top: 40px; font-size: 0.85em; color: #777; text-align: center; }
   </style>
 </head>
 <body>
-  <div class="container">
-    ${metadata.model ? `
-    <div class="metadata">
-      <p>🤖 <strong>Modèle IA :</strong> ${metadata.model}</p>
-      <p>⏱️ <strong>Généré le :</strong> ${metadata.timestamp}</p>
-      <p>⚡ <strong>Temps de traitement :</strong> ${metadata.duration || 'N/A'}</p>
-    </div>
-    ` : ''}
-    ${content}
-    <footer>
-      <hr>
-      <p>Rapport généré par <b>AI Recommender</b> avec LLaMA via Ollama</p>
-    </footer>
-  </div>
+  ${content}
+  <footer>
+    <hr>
+    <p>Rapport généré par <b>AI Recommender (LLaMA)</b> — ${new Date().toLocaleString('fr-FR')}</p>
+  </footer>
 </body>
 </html>`;
   fs.writeFileSync(filePath, html, 'utf-8');
-  console.log(`✅ Rapport généré : ${filePath}`);
+  console.log(`Rapport généré : ${filePath}`);
 }
 
 function writeJSONSummary(filePath, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
-  console.log(`📄 Résumé JSON créé : ${filePath}`);
+  console.log(`Résumé JSON créé : ${filePath}`);
 }
 
 // ============================================================================
-// INTERACTION AVEC OLLAMA
+// INTERACTION AVEC LLaMA (OLLAMA)
 // ============================================================================
-function queryOllama(prompt) {
+function queryLLM(prompt) {
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify({
       model: LLM_MODEL,
       prompt: prompt,
       stream: false,
-      options: { 
-        temperature: 0.7,
-        top_p: 0.9,
-        num_predict: 4096
-      }
+      options: { temperature: 0.7, top_p: 0.9, max_tokens: 4096 }
     });
 
     const options = {
@@ -251,29 +116,18 @@ function queryOllama(prompt) {
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(postData)
       },
-      timeout: 300000 // 5 minutes
+      timeout: 120000
     };
 
     const req = http.request(options, res => {
       let data = '';
-      
-      // ✅ CORRECTION: Gérer les codes d'erreur HTTP
-      if (res.statusCode !== 200) {
-        reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
-        return;
-      }
-      
       res.on('data', chunk => (data += chunk));
       res.on('end', () => {
         try {
           const response = JSON.parse(data);
-          if (response.error) {
-            reject(new Error(response.error));
-            return;
-          }
           resolve(response.response || '');
         } catch (e) {
-          reject(new Error('Erreur parsing réponse Ollama: ' + e.message));
+          reject(new Error('Erreur parsing réponse LLM: ' + e.message));
         }
       });
     });
@@ -281,7 +135,7 @@ function queryOllama(prompt) {
     req.on('error', err => reject(err));
     req.on('timeout', () => {
       req.destroy();
-      reject(new Error('Timeout Ollama (> 5 minutes)'));
+      reject(new Error('Timeout Ollama'));
     });
 
     req.write(postData);
@@ -308,30 +162,18 @@ function checkOllamaAvailability() {
       res.on('end', () => {
         try {
           const response = JSON.parse(data);
-          const models = response.models || [];
-          
-          // ✅ CORRECTION: Vérification plus souple du modèle
-          const modelBaseName = LLM_MODEL.split(':')[0]; // "llama3.2"
-          const hasModel = models.some(m => {
-            // Accepter "llama3.2", "llama3.2:3b", "llama3.2:latest", etc.
-            return m.name === LLM_MODEL || m.name.startsWith(modelBaseName);
-          });
-          
-          resolve({ 
-            available: true, 
-            hasModel,
-            models: models.map(m => m.name)
-          });
+          const hasModel = response.models?.some(m => m.name.includes(LLM_MODEL));
+          resolve({ available: true, hasModel });
         } catch (e) {
-          resolve({ available: true, hasModel: false, models: [] });
+          resolve({ available: true, hasModel: false });
         }
       });
     });
 
-    req.on('error', () => resolve({ available: false, hasModel: false, models: [] }));
+    req.on('error', () => resolve({ available: false, hasModel: false }));
     req.on('timeout', () => {
       req.destroy();
-      resolve({ available: false, hasModel: false, models: [] });
+      resolve({ available: false, hasModel: false });
     });
 
     req.end();
@@ -339,74 +181,18 @@ function checkOllamaAvailability() {
 }
 
 // ============================================================================
-// FORMATAGE MARKDOWN → HTML (AMÉLIORÉ)
-// ============================================================================
-function simpleMarkdownToHTML(text) {
-  let html = text;
-  
-  // Blocs de code (avant tout le reste)
-  html = html.replace(/```([\s\S]*?)```/g, (match, code) => {
-    return `<pre><code>${code.trim()}</code></pre>`;
-  });
-  
-  // Titres
-  html = html.replace(/^### (.*?)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.*?)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.*?)$/gm, '<h1>$1</h1>');
-  
-  // Gras et italique
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-  
-  // Code inline (éviter les blocs déjà traités)
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  
-  // ✅ CORRECTION: Listes avec wrapping <ul> et <ol>
-  // Listes non ordonnées
-  html = html.replace(/((?:^[*-] .*$\n?)+)/gm, (match) => {
-    const items = match.split('\n')
-      .filter(line => line.trim())
-      .map(line => line.replace(/^[*-] /, ''))
-      .map(item => `<li>${item}</li>`)
-      .join('\n');
-    return `<ul>\n${items}\n</ul>`;
-  });
-  
-  // Listes ordonnées
-  html = html.replace(/((?:^\d+\. .*$\n?)+)/gm, (match) => {
-    const items = match.split('\n')
-      .filter(line => line.trim())
-      .map(line => line.replace(/^\d+\. /, ''))
-      .map(item => `<li>${item}</li>`)
-      .join('\n');
-    return `<ol>\n${items}\n</ol>`;
-  });
-  
-  // Paragraphes (éviter d'ajouter <p> dans les balises HTML)
-  html = html.split('\n\n').map(block => {
-    // Ne pas wrapper si c'est déjà du HTML
-    if (block.trim().startsWith('<')) {
-      return block;
-    }
-    return `<p>${block.replace(/\n/g, '<br>')}</p>`;
-  }).join('\n');
-  
-  return html;
-}
-
-// ============================================================================
 // MAIN
 // ============================================================================
 (async () => {
-  const startTime = Date.now();
-  console.log('\n🚀 Démarrage du AI Recommender avec LLaMA/Ollama...\n');
+  console.log('\nDémarrage du AI Recommender (à partir des prompts)...\n');
   
   // Créer le dossier de sortie
   ensureDirectoryExists(OUTPUT_DIR);
 
   // Vérifier que le dossier des prompts existe
   if (!fs.existsSync(PROMPTS_DIR)) {
-    console.error(`❌ Erreur : Le dossier de prompts n'existe pas : ${PROMPTS_DIR}`);
+    console.error(`Erreur : Le dossier de prompts n'existe pas : ${PROMPTS_DIR}`);
+    console.log('Création d'un rapport d'erreur...');
     
     const errorReport = {
       status: 'error',
@@ -420,43 +206,18 @@ function simpleMarkdownToHTML(text) {
   }
 
   // Vérifier la disponibilité d'Ollama
-  console.log('🔍 Vérification de la disponibilité d\'Ollama...');
+  console.log('Vérification de la disponibilité d'Ollama...');
   const ollamaStatus = await checkOllamaAvailability();
   
   if (!ollamaStatus.available) {
-    console.error('❌ Ollama n\'est pas accessible !');
-    console.log('💡 Assurez-vous que Ollama est démarré : ollama serve');
-    console.log('   Installation : https://ollama.ai\n');
-    
-    const errorReport = {
-      status: 'error',
-      message: 'Ollama not available',
-      host: `${OLLAMA_HOST}:${OLLAMA_PORT}`,
-      timestamp: new Date().toISOString()
-    };
-    
-    writeJSONSummary(path.join(OUTPUT_DIR, 'error.json'), errorReport);
-    process.exit(1);
+    console.warn('Ollama n'est pas disponible. Les rapports seront générés sans analyse IA.');
+    console.log('Pour utiliser l'IA, installez Ollama : https://ollama.ai\n');
+  } else if (!ollamaStatus.hasModel) {
+    console.warn(`Le modèle ${LLM_MODEL} n'est pas installé.`);
+    console.log(`Installez-le avec : ollama pull ${LLM_MODEL}\n`);
+  } else {
+    console.log('Ollama est disponible et le modèle est prêt !\n');
   }
-
-  if (!ollamaStatus.hasModel) {
-    console.error(`❌ Le modèle ${LLM_MODEL} n'est pas installé !`);
-    console.log(`💡 Installez-le avec : ollama pull ${LLM_MODEL}`);
-    console.log(`   Modèles disponibles : ${ollamaStatus.models.join(', ') || 'aucun'}\n`);
-    
-    const errorReport = {
-      status: 'error',
-      message: `Model ${LLM_MODEL} not found`,
-      requested_model: LLM_MODEL,
-      available_models: ollamaStatus.models,
-      timestamp: new Date().toISOString()
-    };
-    
-    writeJSONSummary(path.join(OUTPUT_DIR, 'error.json'), errorReport);
-    process.exit(1);
-  }
-
-  console.log(`✅ Ollama est disponible avec le modèle ${LLM_MODEL} !\n`);
 
   // Lire les fichiers de prompts
   const promptFiles = fs.readdirSync(PROMPTS_DIR).filter(f => 
@@ -464,7 +225,7 @@ function simpleMarkdownToHTML(text) {
   );
   
   if (promptFiles.length === 0) {
-    console.log('⚠️ Aucun prompt trouvé dans', PROMPTS_DIR);
+    console.log('Aucun prompt trouvé dans', PROMPTS_DIR);
     
     const emptyReport = {
       status: 'no_prompts',
@@ -477,24 +238,21 @@ function simpleMarkdownToHTML(text) {
     process.exit(0);
   }
 
-  console.log(`📂 ${promptFiles.length} prompt(s) trouvé(s)\n`);
+  console.log(`${promptFiles.length} prompt(s) trouvé(s)\n`);
 
   const summary = {
     total_prompts: promptFiles.length,
     processed: 0,
     failed: 0,
     reports: [],
-    model: LLM_MODEL,
-    timestamp: new Date().toISOString(),
-    total_duration: 0
+    ollama_available: ollamaStatus.available && ollamaStatus.hasModel,
+    timestamp: new Date().toISOString()
   };
 
   // Traiter chaque prompt
   for (const file of promptFiles) {
     const type = path.basename(file, path.extname(file)).toLowerCase();
-    console.log(`\n${'='.repeat(60)}`);
-    console.log(`🧠 Traitement du prompt : ${file}`);
-    console.log('='.repeat(60));
+    console.log(`Traitement du prompt : ${file}`);
     
     const promptPath = path.join(PROMPTS_DIR, file);
     const prompt = readPrompt(promptPath);
@@ -505,68 +263,55 @@ function simpleMarkdownToHTML(text) {
     }
 
     try {
-      const promptStart = Date.now();
-      console.log('   ⏳ Envoi à LLaMA...');
+      let htmlContent;
       
-      const llmResponse = await queryOllama(prompt);
-      const duration = ((Date.now() - promptStart) / 1000).toFixed(2);
-      
-      console.log(`   ✅ Réponse reçue (${duration}s)`);
-      console.log('   📝 Génération du rapport HTML...');
-      
-      // Convertir le markdown en HTML
-      const formattedContent = simpleMarkdownToHTML(llmResponse);
-      
-      const htmlContent = `
-        <h1>🔒 ${type.toUpperCase()} Security Report</h1>
-        <div class="ai-analysis">
-          ${formattedContent}
-        </div>
-      `;
+      if (ollamaStatus.available && ollamaStatus.hasModel) {
+        // Générer avec l'IA
+        const llmResponse = await queryLLM(prompt);
+        htmlContent = `
+          <h1>${type.toUpperCase()} Security Report</h1>
+          <div class="ai-analysis">
+            ${llmResponse}
+          </div>
+        `;
+      } else {
+        // Générer sans l'IA (afficher le prompt seulement)
+        htmlContent = `
+          <h1>${type.toUpperCase()} Security Report</h1>
+          <div class="warning" style="background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0;">
+            <strong>Rapport généré sans analyse IA</strong>
+            <p>Ollama n'était pas disponible lors de la génération de ce rapport.</p>
+          </div>
+          <h2>Prompt d'analyse</h2>
+          <pre>${prompt}</pre>
+        `;
+      }
       
       const htmlPath = path.join(OUTPUT_DIR, `${type}_report.html`);
-      writeHTMLReport(htmlPath, htmlContent, {
-        model: LLM_MODEL,
-        timestamp: new Date().toLocaleString('fr-FR'),
-        duration: `${duration}s`
-      });
+      writeHTMLReport(htmlPath, htmlContent);
       
       summary.processed++;
-      summary.total_duration += parseFloat(duration);
       summary.reports.push({
         type,
         file,
         output: path.basename(htmlPath),
-        duration_seconds: parseFloat(duration),
-        success: true
+        ai_processed: ollamaStatus.available && ollamaStatus.hasModel
       });
       
     } catch (error) {
-      console.error(`   ❌ Erreur : ${error.message}`);
+      console.error(`Erreur sur ${file} :`, error.message);
       summary.failed++;
-      summary.reports.push({
-        type,
-        file,
-        error: error.message,
-        success: false
-      });
     }
   }
 
   // Générer le résumé JSON
-  summary.total_duration = summary.total_duration.toFixed(2);
   writeJSONSummary(path.join(OUTPUT_DIR, 'summary.json'), summary);
 
   // Rapport final
-  const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
   console.log('\n' + '='.repeat(60));
-  console.log('✨ Traitement terminé !');
-  console.log('='.repeat(60));
-  console.log(`   ✅ Rapports générés : ${summary.processed}`);
-  console.log(`   ❌ Échecs : ${summary.failed}`);
-  console.log(`   ⏱️  Temps total : ${totalTime}s`);
-  console.log(`   📁 Dossier de sortie : ${OUTPUT_DIR}`);
+  console.log('Traitement terminé !');
+  console.log(`   Rapports générés : ${summary.processed}`);
+  console.log(`   Échecs : ${summary.failed}`);
+  console.log(`   Dossier de sortie : ${OUTPUT_DIR}`);
   console.log('='.repeat(60) + '\n');
-  
-  process.exit(summary.failed > 0 ? 1 : 0);
 })();
