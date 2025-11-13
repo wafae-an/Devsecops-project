@@ -584,46 +584,65 @@ jobs:
             echo "⚠️ Aucun dossier 'prompts' trouvé"
           fi
       
-           # --------------------------------------------------------------------------
-      # Étape 12 : 🦙🤖 Setup Ollama and Run AI Recommender (SOLUTION DÉFINITIVE)
+                # --------------------------------------------------------------------------
+      # Étape 12 : 🦙🤖 Setup Ollama and Run AI Recommender (ULTRA ROBUSTE)
       # --------------------------------------------------------------------------
       - name: 🦙🤖 Setup Ollama and Run AI Recommender
         run: |
+          set -e  # Arrêter en cas d'erreur
+          
           echo "📦 Installation d'Ollama..."
           curl -fsSL https://ollama.com/install.sh | sh
           
-          echo "🚀 Démarrage d'Ollama en arrière-plan..."
+          echo "🔍 Vérification de l'installation..."
+          which ollama || (echo "❌ Ollama non installé" && exit 1)
+          ollama --version
+          
+          echo "🚀 Démarrage d'Ollama..."
+          # Utiliser nohup + disown pour détacher complètement le processus
           nohup ollama serve > /tmp/ollama.log 2>&1 &
           OLLAMA_PID=$!
+          disown  # Détacher du shell
+          
           echo "📍 Ollama PID: $OLLAMA_PID"
           
-          # Fonction de vérification avec retry
-          wait_for_ollama() {
-            local max_attempts=30
-            local attempt=0
+          # Attendre avec des tests plus agressifs
+          echo "⏳ Attente du démarrage (jusqu'à 60 secondes)..."
+          for i in {1..30}; do
+            # Vérifier que le processus existe toujours
+            if ! kill -0 $OLLAMA_PID 2>/dev/null; then
+              echo "❌ Le processus Ollama est mort !"
+              echo "📝 Logs d'Ollama:"
+              cat /tmp/ollama.log
+              exit 1
+            fi
             
-            while [ $attempt -lt $max_attempts ]; do
-              if curl -s http://localhost:11434/api/tags >/dev/null 2>&1; then
-                echo "✅ Ollama répond !"
-                return 0
-              fi
-              attempt=$((attempt + 1))
-              echo "⏳ Tentative $attempt/$max_attempts..."
-              sleep 2
-            done
+            # Tester la connexion
+            if curl -s -f http://localhost:11434/api/tags >/dev/null 2>&1; then
+              echo "✅ Ollama répond au bout de $((i*2)) secondes !"
+              break
+            fi
             
-            echo "❌ Ollama n'a pas démarré"
-            return 1
-          }
+            echo "   Tentative $i/30 - En attente..."
+            sleep 2
+            
+            if [ $i -eq 30 ]; then
+              echo "❌ Timeout après 60 secondes"
+              echo "📝 Logs d'Ollama:"
+              cat /tmp/ollama.log
+              echo "📝 Processus:"
+              ps aux | grep ollama
+              echo "📝 Ports:"
+              netstat -tlnp 2>/dev/null | grep 11434 || ss -tlnp | grep 11434 || echo "Aucun port 11434"
+              exit 1
+            fi
+          done
           
-          # Attendre qu'Ollama soit prêt
-          if ! wait_for_ollama; then
-            echo "📝 Logs d'Ollama:"
-            cat /tmp/ollama.log
-            echo "📝 Processus actifs:"
-            ps aux | grep ollama
-            exit 1
-          fi
+          # Test approfondi de connexion
+          echo "🔍 Test approfondi de connexion..."
+          RESPONSE=$(curl -s http://localhost:11434/api/tags)
+          echo "📡 Réponse d'Ollama:"
+          echo "$RESPONSE" | head -20
           
           echo "📥 Téléchargement du modèle llama3.2:3b..."
           ollama pull llama3.2:3b
@@ -631,25 +650,49 @@ jobs:
           echo "✅ Modèles disponibles:"
           ollama list
           
-          echo "🔍 Test final de connexion..."
-          curl -v http://localhost:11434/api/tags 2>&1 | head -20
+          # Double vérification avant de lancer Node.js
+          echo "🔍 Vérification finale avant Node.js..."
+          for i in {1..5}; do
+            if curl -s -f http://localhost:11434/api/tags >/dev/null 2>&1; then
+              echo "✅ Ollama toujours actif !"
+              break
+            fi
+            echo "⚠️ Ollama ne répond plus, attente..."
+            sleep 1
+          done
+          
+          # Afficher l'état juste avant Node.js
+          echo "📊 État du système avant Node.js:"
+          echo "Processus Ollama:"
+          ps aux | grep ollama | grep -v grep
+          echo "Port 11434:"
+          netstat -tlnp 2>/dev/null | grep 11434 || ss -tlnp | grep 11434
           
           echo "🤖 Lancement du AI Recommender..."
           mkdir -p ai-reports
           
-          # Lancer Node.js avec Ollama en arrière-plan actif
-          node app/ai_recommender.js ./parsed-security-reports ./ai-reports
+          # Lancer Node.js avec variables d'environnement explicites
+          OLLAMA_HOST=localhost OLLAMA_PORT=11434 LLM_MODEL=llama3.2:3b \
+            node app/ai_recommender.js ./parsed-security-reports ./ai-reports
+          
           EXIT_CODE=$?
+          echo "📊 Code de sortie Node.js: $EXIT_CODE"
+          
+          # Vérifier les fichiers générés
+          echo "📂 Contenu de ai-reports:"
+          ls -lah ./ai-reports
+          
+          if [ -f "./ai-reports/error.json" ]; then
+            echo "⚠️ Fichier d'erreur détecté:"
+            cat ./ai-reports/error.json
+          fi
           
           # Nettoyer
           echo "🛑 Arrêt d'Ollama..."
-          kill $OLLAMA_PID 2>/dev/null || pkill -f "ollama serve" || true
-          
-          echo "✅ Terminé avec code: $EXIT_CODE"
-          ls -lah ./ai-reports
+          kill $OLLAMA_PID 2>/dev/null || true
+          pkill -f "ollama serve" || true
           
           exit $EXIT_CODE
-            
       # --------------------------------------------------------------------------
       # Étape 13 : 📤 Upload des rapports IA générés
       # --------------------------------------------------------------------------
