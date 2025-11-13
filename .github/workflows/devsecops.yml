@@ -562,7 +562,32 @@ jobs:
           name: parsed-security-reports
           path: ./parsed-reports/
           retention-days: 30
-      - name: 🦙 Install and Setup Ollama
+      
+      # --------------------------------------------------------------------------
+      # Étape 11 : 📥 Télécharger les rapports parsés
+      # --------------------------------------------------------------------------
+      - name: 📥 Download parsed security reports
+        uses: actions/download-artifact@v4
+        with:
+          name: parsed-security-reports
+          path: ./parsed-security-reports
+      
+      - name: 🔍 Verify downloaded files
+        run: |
+          echo "📂 Contenu de ./parsed-security-reports :"
+          ls -la ./parsed-security-reports || echo "⚠️ Dossier vide ou introuvable"
+          
+          if [ -d "./parsed-security-reports/prompts" ]; then
+            echo "📝 Prompts trouvés :"
+            ls -la ./parsed-security-reports/prompts
+          else
+            echo "⚠️ Aucun dossier 'prompts' trouvé"
+          fi
+      
+      # --------------------------------------------------------------------------
+      # Étape 12 : 🦙🤖 Setup Ollama et Run AI Recommender (COMBINÉ)
+      # --------------------------------------------------------------------------
+      - name: 🦙🤖 Setup Ollama and Run AI Recommender
         run: |
           echo "📦 Installation d'Ollama..."
           curl -fsSL https://ollama.com/install.sh | sh
@@ -570,7 +595,7 @@ jobs:
           echo "🚀 Démarrage du service Ollama en arrière-plan..."
           ollama serve > /tmp/ollama.log 2>&1 &
           OLLAMA_PID=$!
-          echo "PID d'Ollama: $OLLAMA_PID"
+          echo "📍 PID d'Ollama: $OLLAMA_PID"
           
           echo "⏳ Attente du démarrage du service..."
           MAX_RETRIES=30
@@ -593,77 +618,29 @@ jobs:
             exit 1
           fi
           
-          echo "📥 Téléchargement du modèle LLaMA 3.2..."
-          ollama pull llama3.2
+          echo "📥 Téléchargement du modèle llama3.2:3b..."
+          ollama pull llama3.2:3b
           
           echo "✅ Ollama est prêt ! Modèles disponibles :"
           ollama list
-            
-         
-      
-      # --------------------------------------------------------------------------
-      # Étape 12 : 📥 Télécharger les rapports parsés
-      # --------------------------------------------------------------------------
-      - name: 📥 Download parsed security reports
-        uses: actions/download-artifact@v4
-        with:
-          name: parsed-security-reports
-          path: ./parsed-security-reports
-      
-      - name: 🔍 Verify downloaded files
-        run: |
-          echo "📂 Contenu de ./parsed-security-reports :"
-          ls -la ./parsed-security-reports || echo "⚠️ Dossier vide ou introuvable"
           
-          if [ -d "./parsed-security-reports/prompts" ]; then
-            echo "📝 Prompts trouvés :"
-            ls -la ./parsed-security-reports/prompts
-          else
-            echo "⚠️ Aucun dossier 'prompts' trouvé"
-          fi
-      
-      # --------------------------------------------------------------------------
-      # Étape 13 : 🤖 Exécuter AI Recommender avec LLaMA
-      # --------------------------------------------------------------------------
-      - name: 🤖 Run AI Recommender (LLaMA)
-        run: |
-          echo "🚀 Starting AI Recommender with LLaMA..."
+          echo "🔍 Test de connexion à l'API Ollama..."
+          curl -s http://localhost:11434/api/tags | head -n 20
+          
+          echo "🤖 Lancement du AI Recommender..."
           mkdir -p ai-reports
-          
-          # Double vérification qu'Ollama fonctionne
-          echo "🔍 Vérification finale d'Ollama..."
-          if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-            echo "⚠️ Ollama n'est pas accessible, tentative de redémarrage..."
-            pkill -f ollama || true
-            ollama serve > /tmp/ollama.log 2>&1 &
-            
-            # Attendre avec retry
-            for i in {1..15}; do
-              if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-                echo "✅ Ollama redémarré avec succès"
-                break
-              fi
-              echo "⏳ Tentative $i/15..."
-              sleep 2
-            done
-          fi
-          
-          # Vérification finale
-          if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
-            echo "❌ Impossible de démarrer Ollama"
-            echo "📝 Logs:"
-            cat /tmp/ollama.log
-            exit 1
-          fi
-          
-          # Exécuter le script AI Recommender
           node app/ai_recommender.js ./parsed-security-reports ./ai-reports
+          
+          # Arrêter proprement Ollama
+          echo "🛑 Arrêt du service Ollama..."
+          kill $OLLAMA_PID 2>/dev/null || true
           
           echo "✅ AI-generated reports are ready!"
           echo "📊 Contenu de ./ai-reports :"
           ls -lah ./ai-reports
+      
       # --------------------------------------------------------------------------
-      # Étape 14 : 📤 Upload des rapports IA générés
+      # Étape 13 : 📤 Upload des rapports IA générés
       # --------------------------------------------------------------------------
       - name: 📤 Upload AI-generated reports
         if: always()
