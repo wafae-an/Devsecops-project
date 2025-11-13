@@ -32,7 +32,7 @@ const OUTPUT_DIR = process.argv[3]
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'localhost';
 const OLLAMA_PORT = process.env.OLLAMA_PORT || '11434';
-const LLM_MODEL = process.env.LLM_MODEL || 'llama3.2';
+const LLM_MODEL = process.env.LLM_MODEL || 'llama3.2:3b';
 
 console.log('📋 Configuration:');
 console.log(`   - Prompts directory: ${PROMPTS_DIR}`);
